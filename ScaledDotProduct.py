@@ -4,7 +4,7 @@ import math
 
 class ScaledDotProduct(nn.Module):
     def __init__(self, attentionHeadSize, dropOutProb=0.1):
-        super().__init__()
+        super(ScaledDotProduct, self).__init__()
         self.attentionHeadSize = attentionHeadSize
         self.dropout = nn.Dropout(dropOutProb)
         
@@ -12,4 +12,4 @@ class ScaledDotProduct(nn.Module):
         aScores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.attentionHeadSize)
         aScores = aScores + attentionMask
         aProbs = self.dropout(nn.Softmax(dim=-1)(aScores))
-        return torch.matmul(aProbs, V), aProbs
+        return torch.matmul(aProbs, V)

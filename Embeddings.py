@@ -8,7 +8,7 @@ import math
 
 class BERTEmbeddings(nn.Module):
 
-	def __init__(self, hiddenSize, vocabSize, maxPosEmbedding, dropoutProb):
+	def __init__(self, hiddenSize, vocabSize, maxPosEmbedding, dropoutProb=0.1):
 		super(BERTEmbeddings, self).__init__()
 		self.maxLen = maxPosEmbedding
 		self.wordEmbeddings = nn.Embedding(vocabSize, hiddenSize, padding_idx=0)
@@ -17,7 +17,7 @@ class BERTEmbeddings(nn.Module):
 		self.normLayer = NormLayer(hiddenSize)
 		self.dropout = nn.Dropout(dropoutProb)
 
-	def forward(self, inputIDs, sequenceIDs=None):
+	def forward(self, inputIDs, sequenceIDs):
 		we = self.wordEmbeddings(inputIDs)
 		se = self.seqEmbeddings(sequenceIDs)
 		hiddenSize = we.size(1)

@@ -53,3 +53,25 @@ def splitPunctuation(token):
 			newWord = False
 			output[-1].append(c)
 	return ["".join(c) for c in output]
+
+def loadModuleParameters(module, prefix, meta, **kwargs):
+	stateDict = kwargs.get("state_dict", None)
+	kwargs.pop("state_dict", None)
+	missingKeys = kwargs.get("missing_keys", None)
+	kwargs.pop("missing_keys", None)
+	unexpKeys = kwargs.get("unexp_keys", None)
+	kwargs.pop("unexp_keys", None)
+	errors = kwargs.get("errors", None)
+	kwargs.pop("errors", None)
+
+	if stateDict is None:
+		raise ValueError("stateDict cannot be empty.")
+
+	#print(prefix)
+
+	localMeta = {} if meta is None else meta.get(prefix[:-1], {})
+	module._load_from_state_dict(stateDict, prefix, localMeta, True, missingKeys, unexpKeys, errors)
+	for name, childModule in module._modules.items():
+		#print(prefix + name + ".")
+		if childModule is not None:
+			loadModuleParameters(childModule, prefix + name + ".", meta, state_dict=stateDict, missing_keys=missingKeys, unexp_keys=unexpKeys, errors=errors)

@@ -14,6 +14,7 @@ class Encoder(nn.Module):
 
 		self.multiHeadAtt = MultiHeadAttention(hiddenSize, numAttentionHeads, dropoutProb)
 		self.feedForward = FeedForward(hiddenSize, 4 * hiddenSize, dropoutProb)
+		self.attNorm = NormLayer(hiddenSize, normEpsilon)
 		self.outputNorm = NormLayer(hiddenSize, normEpsilon)
 		self.dropout = nn.Dropout(dropoutProb)
 
@@ -22,7 +23,7 @@ class Encoder(nn.Module):
 
 		# Add+Norm for MultiHeadAttention output
 		attentionOutput = self.dropout(attentionOutput)
-		normAttOutput = self.outputNorm(attentionOutput + hiddenStates)
+		normAttOutput = self.attNorm(attentionOutput + hiddenStates)
 
 		ffOutput = self.feedForward(normAttOutput)
 		normFFOutput = self.outputNorm(ffOutput + normAttOutput)

@@ -19,8 +19,8 @@ class NormLayer(nn.Module):
 
 	def __init__(self, hiddenSize, epsilon=1e-12):
 		super(NormLayer, self).__init__()
-		self.normWeights = nn.Parameter(torch.ones(hiddenSize))
-		self.normBias = nn.Parameter(torch.zeros(hiddenSize))
+		self.weight = nn.Parameter(torch.ones(hiddenSize))
+		self.bias = nn.Parameter(torch.zeros(hiddenSize))
 		self.epsilon = epsilon
 
 
@@ -29,5 +29,5 @@ class NormLayer(nn.Module):
 		stdArg = (input - mu).pow(2).mean(-1, keepdim=True) + self.epsilon
 		std = torch.sqrt(stdArg)
 		normInput = (input - mu) / std
-		return self.normWeights * normInput + self.normBias
+		return self.weight * normInput + self.bias
 

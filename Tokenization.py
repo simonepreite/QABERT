@@ -20,7 +20,7 @@ class BERTTokenizer(object):
 	def tokenize(self, text):
 		split = []
 		basicTokenized = self.basicTokenization(text)
-		print("Basic tokenization result:", basicTokenized)
+		#print("Basic tokenization result:", basicTokenized)
 		for token in basicTokenized:
 			wordpieceTokenized = self.wordpieceTokenization(token)
 			for subToken in wordpieceTokenized:

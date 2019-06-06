@@ -2,7 +2,6 @@
 
 import os
 import torch
-from BERT import BERTModel
 
 try:
 	import re
@@ -12,7 +11,7 @@ except ImportError:
 	print("TensorFlow is required to convert checkpoints for PyTorch model.")
 	raise
 
-def loadTensorFlowWeights(model, checkpointPath):
+def convertTensorFlowWeights(model, checkpointPath, outputPath=None):
 	checkpointPath = os.path.abspath(checkpointPath)
 
 	print("Loading TensorFlow checkpoint file...")
@@ -61,25 +60,9 @@ def loadTensorFlowWeights(model, checkpointPath):
 		print("Converting to PyTorch weights: {}".format(key))
 		modelPtr.data = torch.from_numpy(value)
 
-	# Test Code
-	# print("After loading...")
-	# pprint(list(filteredDict.keys()))
-	# stateDict = model.state_dict()
-	# for key, value in filteredDict.items():
-	# 	if "kernel" in key:
-	# 		value = np.transpose(value)
-	# 	myKey = key.replace("layer_", "0.").replace("/", ".").replace("kernel", "weight")
-	# 	loaded = stateDict[myKey].numpy()
-	# 	print("Comparing checkpoint value and loaded for {}; equal? {}".format(myKey, np.array_equal(value, loaded)))
-
-	# loadedArray = model.encoder[0][0].multiHeadAtt.outputLinear.weight.detach().numpy()
-	# checkpointArray = data["encoder/layer_0/multiHeadAtt/outputLinear/kernel"]
-	# print(loadedArray.shape, checkpointArray.shape)
-	# print(np.array_equal(loadedArray, np.transpose(checkpointArray)))
+	if outputPath:
+		print("Saving PyTorch model weights to {}".format(outputPath))
+		torch.save(model.state_dict(), outputPath)
 
 
-# Test Code
-path = "../BERT Checkpoints Tensorflow/Bert Base Uncased/bert_model.ckpt"
-model = BERTModel(768)
-loadTensorFlowWeights(model, path)
 

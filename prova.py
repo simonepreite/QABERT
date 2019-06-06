@@ -22,7 +22,8 @@ print(encoder(x, extendedAttentionMask))
 """
 """
 vocabFile = "vocab.txt"
-inputSentence = "Ciao mondo, àèioù... Sticazzi!"
+#inputSentence = "Ciao mondo, àèioù... Sticazzi!"
+inputSentence = "Japanese"
 #inputSentence = "The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse (\"Norman\" comes from \"Norseman\") raiders and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear fealty to King Charles III of West Francia. Through generations of assimilation and mixing with the native Frankish and Roman-Gaulish populations, their descendants would gradually merge with the Carolingian-based cultures of West Francia. The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries."
 
 from Tokenization import BERTTokenizer
@@ -34,17 +35,12 @@ print(myOutput)
 from BERT import BERTModel
 from pprint import pprint
 
-checkpointPath = "/Users/matteo/Documents/Università/Magistrale/Projekt/BERT Checkpoints PyTorch/Bert Base Uncased/bert_base_uncased_pytorch.bin"
-#model = BERTModel.loadPretrained(checkpointPath, 768)
+checkpointPath = "../BERT Checkpoints Tensorflow/Bert Base Uncased/bert_model.ckpt"
+outputPath = "../BERT Checkpoints PyTorch/Bert Base Uncased/bert-base-uncased.bin"
+model = BERTModel.loadPretrained(outputPath, False, outputPath, 768)
+# print("From loaded state_dict")
+# print("encoder.0.0.multiHeadAtt.outputLinear.weight")
+# print(model.state_dict()["encoder.0.0.multiHeadAtt.outputLinear.weight"])
 
-model2 = BERTModel(768)
-
-print(model2)
-print()
-pprint(list(model2.state_dict().keys()))
-
-#print(model.encoder[0][0].feedForward.w1.weight)
-#print()
-#print(model2.encoder[0][0].feedForward.w1.weight)
 
 

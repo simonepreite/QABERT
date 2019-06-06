@@ -104,3 +104,4 @@ venv.bak/
 .mypy_cache/
 
 train-v2\.0\.json
+.DS_Store

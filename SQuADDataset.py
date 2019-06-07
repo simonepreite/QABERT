@@ -5,6 +5,7 @@ from io import open
 from pprint import pprint
 from Tokenization import BERTTokenizer
 from collection import namedtuple
+from utils import stripSpacesForRebuild
 
 def whiteSpaceCheck(char):
 	if char == " " or char == "\t" or char == "\n" or ord(char) == 0x202F:
@@ -103,7 +104,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 					tokEndPos = firstWordpieceTokenIndex[example["endPos"] + 1] -1
 				else:
 					tokEndPos = len(wordpieceParagraph) - 1
-				(tokStartPos, tokEndPos) = _improve_answer_span(wordpieceParagraph, tokStartPos, tokEndPos, tokenizer, example["questionText"])
+				(tokStartPos, tokEndPos) = improveAnswerExtent(wordpieceParagraph, tokStartPos, tokEndPos, tokenizer, example["questionText"])
 		
 		maxTockensForChunks = maxSeqLength - len(queryTokens) - 3
 		
@@ -198,6 +199,17 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 			uniqueID += 1
 
 	return featues
+
+def improveAnswerExtent(chunk, inputStart, inputEnd, tokenizer, originalAnswer):
+	tokenizedAnswer = " ".join(tokenizer.tokenize(originalAnswer))
+
+	for newStart in range(inputStart, inputEnd + 1):
+		for newEnd in range(inputEnd, newStart - 1, -1):
+			span = " ".join(chunk[newStart:(newEnd+1)])
+			if span == tokenizedAnswer:
+				return (newStart, newEnd)
+
+	return (inputStart, inputEnd)
 	
 def isMostRelevantParagraphChunk(chunks, curChunkIndex, pos):
 	bestScore = None
@@ -216,3 +228,49 @@ def isMostRelevantParagraphChunk(chunks, curChunkIndex, pos):
 			bestScoreIndex = index
 
 	return curChunkIndex == bestScoreIndex
+
+
+def rebuildOriginalText(predictedText, originalText, usingLowercase):
+	tokenizer = BERTTokenizer(lowercase=usingLowercase)
+	tokenizedText = tokenizer.basicTokenization(originalText)
+
+	startPos = tokenizedText.find(predictedText)
+	if startPos == -1:
+		return originalText
+
+	endPos = startPos + len(predictedText) - 1
+
+	originalTextStrip, originalTextMap = stripSpacesForRebuild(originalText)
+	tokenizedTextStrip, tokenizedTextMap = stripSpacesForRebuild(tokenizedText)
+
+	if len(originalTextStrip) != len(tokenizedTextStrip):
+		return originalText
+
+	tokenMapping = {}
+	for (i, tokenIndex) in tokenizedTextMap.items():
+		tokenMapping[tokenIndex] = i
+
+	originalStartPos = None
+	if startPos in tokenMapping:
+		mappedStartPosition = tokenMapping[startPos]
+		if mappedStartPosition in originalTextMap:
+			originalStartPos = originalTextMap[mappedStartPosition]
+
+	if originalStartPos is None:
+		return originalText
+
+	originalEndPos = None
+	if endPos in tokenMapping:
+		mappedEndPosition = tokenMapping[endPos]
+		if mappedEndPosition in originalTextMap:
+			originalEndPos = originalTextMap[mappedEndPosition]
+
+	if originalEndPos is None:
+		return originalText
+
+	return originalText[originalStartPos:(originalEndPos + 1)]
+
+
+
+
+

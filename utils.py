@@ -54,6 +54,16 @@ def splitPunctuation(token):
 			output[-1].append(c)
 	return ["".join(c) for c in output]
 
+def stripSpacesForRebuild(text):
+	chars = []
+	charMap = OrderedDict()
+	for (i, c) in enumerate(text):
+		if c != " ":
+			charMap[len(chars)] = i
+			chars.append(c)
+	buildText = "".join(chars)
+	return (buildText, charMap)
+
 def loadModuleParameters(module, prefix, meta, **kwargs):
 	stateDict = kwargs.get("state_dict", None)
 	kwargs.pop("state_dict", None)

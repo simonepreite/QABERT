@@ -9,15 +9,20 @@ import unicodedata
 
 class BERTTokenizer(object):
 
-	def __init__(self, vocabFile, lowercase=True, unsplittable=None):
+	def __init__(self, vocabFile=None, lowercase=True, unsplittable=None):
 		self.usingLowercase = lowercase
 		self.unsplittable = ("[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]")
 		if unsplittable:
 			self.unsplittable = self.unsplittable + unsplittable
-		self.vocab = loadVocab(vocabFile)
-		self.idsToTokens = OrderedDict([(id, tok) for tok, id in self.vocab.items()])
+		self.vocab = None
+		if vocabFile is not None:
+			self.vocab = loadVocab(vocabFile)
+			self.idsToTokens = OrderedDict([(id, tok) for tok, id in self.vocab.items()])
 
 	def tokenize(self, text):
+		if self.vocab is None:
+			raise AttributeError("Tokenization method requires a vocabulary")
+
 		split = []
 		basicTokenized = self.basicTokenization(text)
 		#print("Basic tokenization result:", basicTokenized)
@@ -28,12 +33,18 @@ class BERTTokenizer(object):
 		return split
 
 	def convertToIDs(self, tokens):
+		if self.vocab is None:
+			raise AttributeError("convertToIDs method requires a vocabulary")
+
 		ids = []
 		for token in tokens:
 			ids.append(self.vocab[token])
 		return ids
 
 	def convertToTokens(self, ids):
+		if self.vocab is None:
+			raise AttributeError("convertToTokens method requires a vocabulary")
+
 		tokens = []
 		for index in ids:
 			tokens.append(self.idsToTokens[i])
@@ -69,6 +80,9 @@ class BERTTokenizer(object):
 
 	# Wordpiece Tokenization Logic
 	def wordpieceTokenization(self, token):
+		if self.vocab is None:
+			raise AttributeError("wordpieceTokenization method requires a vocabulary")
+
 		outputTokens = []
 		for tok in cleanWhitespaces(token):
 			chars = list(tok)

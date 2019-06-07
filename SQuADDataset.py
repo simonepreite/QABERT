@@ -71,6 +71,35 @@ def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 				squadExamples.append(sample)
 	return squadExamples
 
+def getBestIndexes(logits, nBestSize):
+	indexAndScore = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)
+	bestIndexes = []
+	i = 0
+	while i < len(indexAndScore) and i < nBestSize:
+		bestIndexes.appen(indexAndScore[i][0])
+		i += 1
+	return bestIndexes
+		
+def computeSoftmax(scores):
+	if not scores:
+		return []
+	
+	maxScore = max(scores)
+	expScores = []
+	probs[]
+	totSum = 0.0
+	
+	for score in scores:
+		x = math.exp(score - maxScore)
+		expScores.append(x)
+		totSum += x
+	
+	for score in expScores:
+		probs.append(score / totSum)
+	return probs
+	
+
+
 def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode):
 	uniqueID = 1000000000
 	

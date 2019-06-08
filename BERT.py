@@ -65,9 +65,41 @@ class BERTModel(BERTInitializer):
 		extendedAttentionMask = (1.0 - extendedAttentionMask) * -10000.0
 		
 		embeddingOutput = self.embeddings(inputIDs, sequenceIDs)
-		encodedLayers = self.encoder(inputIDs, extendedAttentionMask)
+		encodedLayers = self.encoder(embeddingOutput, extendedAttentionMask)
+		return encodedLayers[-1]
 		
-		
+
+class QABERT(BERTInitializer):
+	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
+		super(QABERT, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+
+		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		self.qaOutput = nn.Linear(hiddenSize, 2)
+		self.apply(self.weightsInitialization)
+
+	def forward(self, inputIDs, sequenceIDs, attentionMask, startPositions=None, endPositions=None):
+		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
+		logits = self.qaOutput(bertOutput)
+		startLogits, endLogits = logits.split(1, dim=-1)
+		startLogits = startLogits.squeeze(-1)
+		endLogits = endLogits.squeeze(-1)
+
+		if startPositions is not None and endPositions is not None:
+			if len(startPositions.size()) > 1:
+				startPositions = startPositions.squeeze(-1)
+			if len(endPositions.size()) > 1:
+				endPositions = endPositions.squeeze(-1)
+
+			ignoredIndex = startLogits.size(1)
+			startPositions.clamp_(0, ignoredIndex)
+			endPositions.clamp_(0, ignoredIndex)
+
+			lossFunction = CrossEntropyLoss(ignore_index=ignoredIndex)
+			startLoss = lossFunction(startLogits, startPositions)
+			endLoss = lossFunction(endLogits, endPositions)
+			return (startLoss + endLoss) / 2
+		else:
+			return startLogits, endLogits
 
 
 

@@ -4,7 +4,7 @@ import os
 from io import open
 from pprint import pprint
 from Tokenization import BERTTokenizer
-from collection import namedtuple
+from collections import namedtuple, defaultdict, OrderedDict
 from utils import stripSpacesForRebuild
 
 def whiteSpaceCheck(char):
@@ -45,6 +45,8 @@ def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 	
 	with open(inputFile, "r", encoding='utf-8') as SQuAD:
 		squadData = json.load(SQuAD)["data"]
+
+	SQuADExample = namedtuple("SQuADExample", ["parWords", "questionAnswerID", "questionText", "startPos", "endPos", "answerText", "isImpossible"])
 		
 	squadExamples = []
 	for data in squadData:
@@ -59,15 +61,10 @@ def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 				endP = None
 				answerText = None
 				isImpossible = False
-				sample = {"parWords":wordList,
-						  "questionAnswerID":questionAnswerID,
-						  "questionText":questionText,
-						  "startPos":startP,
-						  "endPos":endP,
-						  "answerText":answerText,
-						  "isImpossible":isImpossible}
 				if trainingMode:
-					sample["startPos"], sample["endPos"], sample["answerText"], sample["isImpossible"] = answerElements(questionAnswer, wordOffset, squadV2)
+					startP, endP, answerText, isImpossible = answerElements(questionAnswer, wordOffset, squadV2)
+
+				sample = SQuADExample(parWords=wordList, questionAnswerID=questionAnswerID, questionText=questionText, startPos=startP, endPos=endP, answerText=answerText, isImpossible=isImpossible)
 				squadExamples.append(sample)
 	return squadExamples
 
@@ -86,7 +83,7 @@ def computeSoftmax(scores):
 	
 	maxScore = max(scores)
 	expScores = []
-	probs[]
+	probs = []
 	totSum = 0.0
 	
 	for score in scores:
@@ -105,7 +102,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 	
 	features = []
 	for (index, example) in enumerate(examples):
-		queryTokens = tokenizer.tokenize(example["questionText"])
+		queryTokens = tokenizer.tokenize(example.questionText)
 		
 		if len(queryTokens) > maxQueryLength:
 			queryTokens = queryTokens[0:maxQueryLength]
@@ -114,7 +111,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 		firstWordpieceTokenIndex = []
 		wordpieceParagraph = []
 		
-		for (i, token) in enumerate(example["parWords"]):
+		for (i, token) in enumerate(example.parWords):
 			firstWordpieceTokenIndex.append(len(wordpieceParagraph))
 			subTokens = tokenizer.tokenize(token)
 			for subToken in subTokens:
@@ -124,20 +121,20 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 		tokStartPos = None
 		tokEndPos = None 
 		if trainingMode:
-			if example["isImpossible"]:
+			if example.isImpossible:
 				tokStartPos = -1
 				tokEndPos = -1
 			else:
-				tokStartPos = firstWordpieceTokenIndex[exampe["startPos"]]
-				if example["endPos"] < len(example["parWords"]) - 1:
-					tokEndPos = firstWordpieceTokenIndex[example["endPos"] + 1] -1
+				tokStartPos = firstWordpieceTokenIndex[example.startPos]
+				if example.endPos < len(example.parWords) - 1:
+					tokEndPos = firstWordpieceTokenIndex[example.endPos + 1] -1
 				else:
 					tokEndPos = len(wordpieceParagraph) - 1
-				(tokStartPos, tokEndPos) = improveAnswerExtent(wordpieceParagraph, tokStartPos, tokEndPos, tokenizer, example["questionText"])
+				(tokStartPos, tokEndPos) = improveAnswerExtent(wordpieceParagraph, tokStartPos, tokEndPos, tokenizer, example.questionText)
 		
 		maxTockensForChunks = maxSeqLength - len(queryTokens) - 3
 		
-		docSpan = namedTuple("docTuple", ["start", "length"])
+		docSpan = namedtuple("docTuple", ["start", "length"])
 		parChunks = [] #doc_spans
 		startOffset = 0
 		while startOffset < len(wordpieceParagraph):
@@ -149,7 +146,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 				break
 			startOffset += min(length, docStride)
 			
-		for (parChuckIndex, parChunk) in enumerate(parChunks):
+		for (parChunkIndex, parChunk) in enumerate(parChunks):
 			tokens = []
 			tokenFirstWordpieceMap = {}
 			tokenMostRelevantChunk = {}
@@ -195,7 +192,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 			endPosition = None
 
 			if trainingMode:
-				if example["isImpossible"]:
+				if example.isImpossible:
 					startPosition = 0
 					endPosition = 0
 				else:
@@ -210,9 +207,9 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 						startPosition = tokStartPos - chunkStart + chunkOffset
 						endPosition = tokEndPos - chunkStart + chunkOffset
 
- 			InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
+			InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
 
- 			inputFeat = InputFeatures(ID=uniqueID,
+			inputFeat = InputFeatures(ID=uniqueID,
 									  exampleID=index,
 									  chunkID=parChunkIndex,
 									  tokens=tokens,
@@ -223,11 +220,11 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 									  segmentIDs=segmentIDs,
 									  startPos=startPosition,
 									  endPos=endPosition,
-									  isImpossible=example["isImpossible"])
-			featues.append(inputFeat)
+									  isImpossible=example.isImpossible)
+			features.append(inputFeat)
 			uniqueID += 1
 
-	return featues
+	return features
 
 def improveAnswerExtent(chunk, inputStart, inputEnd, tokenizer, originalAnswer):
 	tokenizedAnswer = " ".join(tokenizer.tokenize(originalAnswer))
@@ -298,6 +295,186 @@ def rebuildOriginalText(predictedText, originalText, usingLowercase):
 		return originalText
 
 	return originalText[originalStartPos:(originalEndPos + 1)]
+
+def writePredictions(squadExamples, squadFeatures, squadResults, nBestSize, maxAnswerLength, usingLowercase, outputPredictionPath, outputNBestPath, outputOddsPath, usingV2, nullDiffThreshold):
+
+	print("Writing predictions to: {}".format(outputPredictionPath))
+	print("Writing nbest to: {}".format(outputNBestPath))
+	print("Writing (eventual) odds to: {}".format(outputOddsPath))
+
+	exampleToFeatures = defaultdict(list)
+	for f in squadFeatures:
+		exampleToFeatures[f.exampleID].append(f)
+
+	uniqueIDToResult = {}
+	for res in squadResults:
+		uniqueIDToResult[res.ID] = res
+
+	IntermediatePred = namedtuple("IntermediatePred", ["featureIndex", "startIndex", "endIndex", "startLogit", "endLogit"])
+
+	allPredictions = OrderedDict()
+	allNBestPredictions = OrderedDict()
+	scoreDiffs = OrderedDict()
+
+	for (exampleIndex, example) in enumerate(squadExamples):
+		features = exampleToFeatures[exampleIndex]
+		intermediatePreds = []
+
+		nullScore = 1000000
+		minNullFeatureIndex = 0
+		nullStartLogit = 0
+		nullEndLogit = 0
+
+		for (featureIndex, feature) in enumerate(features):
+			result = uniqueIDToResult[feature.ID]
+			startIndexes = getBestIndexes(result.startLogits, nBestSize)
+			endIndexes = getBestIndexes(result.endLogits, nBestSize)
+
+			if usingV2:
+				featureNullScore = result.startLogits[0] + result.endLogits[0]
+				if featureNullScore < nullScore:
+					nullScore = featureNullScore
+					minNullFeatureIndex = featureIndex
+					nullStartLogit = result.startLogits[0]
+					nullEndLogit = result.endLogits[0]
+
+			for startIndex in startIndexes:
+				for endIndex in endIndexes:
+					if (startIndex >= len(feature.tokens)) or (endIndex >= len(feature.tokens)) or (startIndex not in feature.tokenFirstWordpieceMap) or (not feature.tokenMostRelevantChunk.get(startIndex, False)) or (endIndex < startIndex) or (endIndex - startIndex + 1 > maxAnswerLength):
+						continue
+
+					ip = IntermediatePred(featureIndex=featureIndex, startIndex=startIndex, endIndex=endIndex, startLogit=result.startLogits[startIndex], endLogit=result.endLogits[endIndex])
+					intermediatePreds.append(ip)
+
+		if usingV2:
+			ip = IntermediatePred(featureIndex=minNullFeatureIndex, startIndex=0, endIndex=0, startLogit=nullStartLogit, endLogit=nullEndLogit)
+			intermediatePreds.append(ip)
+
+		intermediatePreds = sorted(intermediatePreds, key=lambda x: (x.startLogit + x.endLogit), reverse=True)
+
+		NBestPrediction = namedtuple("NBestPrediction", ["text", "startLogit", "endLogit"])
+
+		seenPredictions = {}
+		nbest = []
+
+		for pred in intermediatePreds:
+			if len(nbest) >= nBestSize:
+				break
+
+			feature = features[pred.featureIndex]
+			if pred.startIndex > 0:
+				sIndex = pred.startIndex
+				eIndex = pred.endIndex
+				tokenizedTokens = feature.tokens[sIndex:(eIndex + 1)]
+				originalChunkStart = feature.tokenFirstWordpieceMap[sIndex]
+				originalChunkEnd = feature.tokenFirstWordpieceMap[eIndex]
+				originalTokens = example.parChunk[originalChunkStart:(originalChunkEnd + 1)]
+				tokenizedText = " ".join(tokenizedTokens)
+
+				tokenizedText = tokenizedText.replace(" ##", "").replace("##", "")
+				tokenizedText = tokenizedText.strip()
+				tokenizedText = " ".join(tokenizedText.split())
+				originalText = " ".join(originalTokens)
+
+				finalText = rebuildOriginalText(tokenizedText, originalText, usingLowercase)
+
+				if finalText not in seenPredictions:
+					seenPredictions[finalText] = True
+			else:
+				finalText = ""
+				seenPredictions[finalText] = True
+
+			nbestPred = NBestPrediction(text=finalText, startLogit=prod.startLogit, endLogit=pred.endLogit)
+			nbest.append(nbestPred)
+
+		if usingV2:
+			if "" not in seenPredictions:
+				emptyNBestPred = NBestPrediction(text="", startLogit=nullStartLogit, endLogit=nullEndLogit)
+				nbest.append(emptyNBestPred)
+
+			if len(nbest) == 1:
+				nbest.insert(0, NBestPrediction(text="empty", startLogit=0.0, endLogit=0.0))
+
+		if not nbest:
+			nbest.append(NBestPrediction(text="empty", startLogit=0.0, endLogit=0.0))
+
+		assert len(nbest) >= 1
+
+		totalScores = []
+		bestNonNullEntry = None
+
+		for entry in nbest:
+			totalScores.append(entry.startLogit + entry.endLogit)
+			if (not bestNonNullEntry) and entry.text:
+				bestNonNullEntry = entry
+
+		probs = computeSoftmax(totalScores)
+
+		nbestJSON = []
+		for (i, entry) in enumerate(nbest):
+			output = OrderedDict()
+			output["text"] = entry.text
+			output["probability"] = probs[i]
+			output["start_logit"] = entry.startLogit
+			output["end_logit"] = entry.endLogit
+			nbestJSON.append(output)
+
+		assert len(nbestJSON) >= 1
+
+		if not usingV2:
+			allPredictions[example.questionAnswerID] = nbestJSON[0]["text"]
+		else:
+			diff = nullScore - bestNonNullEntry.startLogit - bestNonNullEntry.endLogit
+			scoreDiffs[example.questionAnswerID] = diff
+
+			if diff > nullDiffThreshold:
+				allPredictions[example.questionAnswerID] = ""
+			else:
+				allPredictions[example.questionAnswerID] = bestNonNullEntry.text
+
+			allNBestPredictions[example.questionAnswerID] = nbestJSON
+
+	with open(outputPredictionPath, "w") as writer:
+		writer.write(json.dumps(allPredictions, indent=4) + "\n")
+
+	with open(outputNBestPath, "w") as writer:
+		writer.write(json.dumps(allNBestPredictions, indent=4) + "\n")
+
+	if usingV2:
+		with open(outputOddsPath, "w") as writer:
+			writer.write(json.dumps(scoreDiffs, indent=4) + "\n")
+
+
+examples = readSQuADDataset("./train-v2.0.json", True)[:2]
+print(examples)
+
+tokenizer = BERTTokenizer("./vocab.txt")
+
+features = featurizeExamples(examples, tokenizer, 384, 128, 64, True)
+print(features)
+"""
+features = []
+for (example_index, example) in enumerate(examples):
+	query_tokens = tokenizer.tokenize(example["questionText"])
+
+	if len(query_tokens) > 100:
+		query_tokens = query_tokens[0:max_query_length]
+
+	tok_to_orig_index = []
+	orig_to_tok_index = []
+	all_doc_tokens = []
+	# print(example["parWords"])
+	for (i, token) in enumerate(example["parWords"]):
+		orig_to_tok_index.append(len(all_doc_tokens))
+		sub_tokens = tokenizer.tokenize(token)
+		for sub_token in sub_tokens:
+			tok_to_orig_index.append(i)
+			all_doc_tokens.append(sub_token)
+	print("fine")
+"""
+
+
+
 
 
 

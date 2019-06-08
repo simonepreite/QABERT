@@ -53,19 +53,21 @@ class BERTModel(BERTInitializer):
 		self.encoder = nn.Sequential(nn.ModuleList(Encoder(hiddenSize, numAttentionHeads) for _ in range(numLayers)))
 		
 		
-	def forward(tensor, sequenceIDs):
+	def forward(self, inputIDs, sequenceIDs, attentionMask=None):
 		print("forward")
-		x = torch.FloatTensor([[[ 0.9059, -0.7039, -0.3376,  0.1968],[-1.0413,  0.8128,  0.0697, -0.6166],[-0.3793, -0.9851, -2.3841, -0.7003],[ 0.6076, -1.4874, -0.1079,  0.4266]]])
+		#x = torch.FloatTensor([[[ 0.9059, -0.7039, -0.3376,  0.1968],[-1.0413,  0.8128,  0.0697, -0.6166],[-0.3793, -0.9851, -2.3841, -0.7003],[ 0.6076, -1.4874, -0.1079,  0.4266]]])
 
-		inputIDs = torch.randn(1, 4)
-		attentionMask = torch.ones_like(inputIDs)
+		#inputIDs = torch.randn(1, 4)
+		if not attentionMask:
+			attentionMask = torch.ones_like(inputIDs)
 		extendedAttentionMask = attentionMask.unsqueeze(1).unsqueeze(2)
 		#extendedAttentionMask = extendedAttentionMask.to(dtype=next(self.parameters()).dtype)
 		extendedAttentionMask = (1.0 - extendedAttentionMask) * -10000.0
 		
-		x = self.embeddings(x, sequenceIDs)
-		x = self.encoder(x, extendedAttentionMask)
-
+		embeddingOutput = self.embeddings(inputIDs, sequenceIDs)
+		encodedLayers = self.encoder(inputIDs, extendedAttentionMask)
+		
+		
 
 
 

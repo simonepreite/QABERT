@@ -17,7 +17,7 @@ class BERTInitializer(nn.Module):
 			module.weight.data.normal_(mean=0.0, std=0.02)
 		elif isinstance(module, NormLayer):
 			module.bias.data.zero_()
-			module.weights.data.fill_(1.0)
+			module.weight.data.fill_(1.0)
 		if isinstance(module, nn.Linear) and module.bias is not None:
 			module.bias.data.zero_()
 
@@ -32,6 +32,8 @@ class BERTInitializer(nn.Module):
 			if usingTensorFlow:
 				convertTensorFlowWeights(model, checkpointPath, outputPath)
 				return model
+			else:
+				stateDict = torch.load(checkpointPath)
 
 		model.load_state_dict(stateDict)
 

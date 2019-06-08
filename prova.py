@@ -32,15 +32,18 @@ myOutput = myTokenizer.tokenize(inputSentence)
 print(myOutput)
 """
 
-from BERT import BERTModel
+from BERT import BERTModel, QABERT
 from pprint import pprint
 
 checkpointPath = "../BERT Checkpoints Tensorflow/Bert Base Uncased/bert_model.ckpt"
 outputPath = "../BERT Checkpoints PyTorch/Bert Base Uncased/bert-base-uncased.bin"
-model = BERTModel.loadPretrained(outputPath, False, outputPath, 768)
+# model = BERTModel.loadPretrained(outputPath, False, outputPath, 768)
+qaModel = QABERT.loadPretrained(outputPath, False, outputPath, 768)
+
+# print(qaModel.state_dict().keys())
 # print("From loaded state_dict")
 # print("encoder.0.0.multiHeadAtt.outputLinear.weight")
-# print(model.state_dict()["encoder.0.0.multiHeadAtt.outputLinear.weight"])
+print(qaModel.state_dict()["bert.encoder.0.0.multiHeadAtt.outputLinear.weight"])
 
 
 

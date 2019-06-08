@@ -23,13 +23,17 @@ def convertTensorFlowWeights(model, checkpointPath, outputPath=None):
 
 	for name, shape in tfVars:
 		w = tf.train.load_variable(checkpointPath, name)
-		name = name.replace("bert/", "")
+		# TODO: Fix, this works only for QABERT
+		# if isinstance(model, BERTModel): 
+		# 	name = name.replace("bert/", "")
 		for old, new in zip(oldEndings, newEndings):
 			if old in name:
 				name = name.replace(old, new)
 		data[name] = w
 
-	filteredDict = dict(filter(lambda x: x[0].startswith("embeddings") or x[0].startswith("encoder"), data.items()))
+	print(np.transpose(data["bert/encoder/layer_0/multiHeadAtt/outputLinear/kernel"]))
+
+	filteredDict = dict(filter(lambda x: x[0].startswith("bert/embeddings") or x[0].startswith("bert/encoder"), data.items()))
 
 	for key, value in filteredDict.items():
 		modelPtr = model

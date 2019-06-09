@@ -76,16 +76,30 @@ class QABERT(BERTInitializer):
 		super(QABERT, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
-		self.qaOutput = nn.Linear(hiddenSize, 2)
 		self.apply(self.weightsInitialization)
+		self.midIsImpossibleLinear = nn.Linear(hiddenSize, 256)
+		self.isImpossibleOutput = nn.Linear(512*256, 1) #TODO: 512 sequence length, da parametrizzare
+		self.qaLinear1 = nn.Linear(hiddenSize, hiddenSize + 256)
+		self.qaLinear2 = nn.Linear(hiddenSize + 256, 64)
+		self.qaOutput = nn.Linear(64, 2)
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask, startPositions=None, endPositions=None):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
-		logits = self.qaOutput(bertOutput)
+		midIsImpOutput = self.midIsImpossibleLinear(bertOutput)
+		batchSize = midIsImpOutput.size()[0] # should be batch size
+		midIsImpOutputFlattened = midIsImpOutput.view(batchSize, -1)
+		isImpOutput = self.isImpossibleOutput(midIsImpOutputFlattened)
+		
+		concat = torch.cat((bertOutput, midIsImpOutput), dim=-1)
+		qaOutput1 = self.qaLinear1(concat)
+		qaOutput2 = self.qaLinear2(qaOutput1)
+		logits = self.qaOutput(qaOutput2)
+		
+		#logits = self.qaOutput(bertOutput)
 		startLogits, endLogits = logits.split(1, dim=-1)
 		startLogits = startLogits.squeeze(-1)
 		endLogits = endLogits.squeeze(-1)
-
+"""
 		if startPositions is not None and endPositions is not None:
 			if len(startPositions.size()) > 1:
 				startPositions = startPositions.squeeze(-1)
@@ -101,7 +115,8 @@ class QABERT(BERTInitializer):
 			endLoss = lossFunction(endLogits, endPositions)
 			return (startLoss + endLoss) / 2
 		else:
-			return startLogits, endLogits
+"""
+		return startLogits, endLogits, isImpOutput
 
 
 

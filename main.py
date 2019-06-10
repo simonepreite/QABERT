@@ -14,7 +14,7 @@ def main():
 	
 	outputDir = "./results"
 	trainBatchSize = 12
-	numTrainEpochs = 2 # these both are parameter that have to come from the commmand line
+	numTrainEpochs = 1 # these both are parameter that have to come from the commmand line
 	
 	device = torch.device("cuda" if torch.cuda.is_avaliable() else "cpu")
 	nGPU = torch.cuda.device_count()
@@ -61,7 +61,7 @@ def main():
 			v.requires_grad = False
 	
 	# Training for the isImpossible part of the network
-	for _ in range(10):
+	for _ in range(int(numTrainEpochs)):
 		for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for IsImpossible")):
 			if nGPU == 1:
 				batch = tuple(t.to(device) for t in batch)
@@ -82,7 +82,6 @@ def main():
 			optimizer.zero_grad()
 			globalStep += 1
 
-	deactivatedLayers = [model.bert, model.qaLinear1, model.qaLinear2, model.qaOutput]
 	for l in deactivatedLayers:
 		for v in l.paramenters():
 			v.requires_grad = True

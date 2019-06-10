@@ -7,6 +7,13 @@ from Tokenization import BERTTokenizer
 from collections import namedtuple, defaultdict, OrderedDict
 from utils import stripSpacesForRebuild
 
+
+InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
+SQuADExample = namedtuple("SQuADExample", ["parWords", "questionAnswerID", "questionText", "startPos", "endPos", "answerText", "isImpossible"])
+docSpan = namedtuple("docSpan", ["start", "length"])
+IntermediatePred = namedtuple("IntermediatePred", ["featureIndex", "startIndex", "endIndex", "startLogit", "endLogit"])
+NBestPrediction = namedtuple("NBestPrediction", ["text", "startLogit", "endLogit"])
+
 def whiteSpaceCheck(char):
 	if char == " " or char == "\t" or char == "\n" or ord(char) == 0x202F:
 		return True
@@ -45,8 +52,6 @@ def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 	
 	with open(inputFile, "r", encoding='utf-8') as SQuAD:
 		squadData = json.load(SQuAD)["data"]
-
-	SQuADExample = namedtuple("SQuADExample", ["parWords", "questionAnswerID", "questionText", "startPos", "endPos", "answerText", "isImpossible"])
 		
 	squadExamples = []
 	for data in squadData:
@@ -134,7 +139,6 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 		
 		maxTockensForChunks = maxSeqLength - len(queryTokens) - 3
 		
-		docSpan = namedtuple("docTuple", ["start", "length"])
 		parChunks = [] #doc_spans
 		startOffset = 0
 		while startOffset < len(wordpieceParagraph):
@@ -206,8 +210,6 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 						chunkOffset = len(queryTokens) + 2 # because of tags like [CLS] or [SEP]
 						startPosition = tokStartPos - chunkStart + chunkOffset
 						endPosition = tokEndPos - chunkStart + chunkOffset
-
-			InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
 
 			inputFeat = InputFeatures(ID=uniqueID,
 									  exampleID=index,
@@ -310,8 +312,6 @@ def writePredictions(squadExamples, squadFeatures, squadResults, nBestSize, maxA
 	for res in squadResults:
 		uniqueIDToResult[res.ID] = res
 
-	IntermediatePred = namedtuple("IntermediatePred", ["featureIndex", "startIndex", "endIndex", "startLogit", "endLogit"])
-
 	allPredictions = OrderedDict()
 	allNBestPredictions = OrderedDict()
 	scoreDiffs = OrderedDict()
@@ -351,8 +351,6 @@ def writePredictions(squadExamples, squadFeatures, squadResults, nBestSize, maxA
 			intermediatePreds.append(ip)
 
 		intermediatePreds = sorted(intermediatePreds, key=lambda x: (x.startLogit + x.endLogit), reverse=True)
-
-		NBestPrediction = namedtuple("NBestPrediction", ["text", "startLogit", "endLogit"])
 
 		seenPredictions = {}
 		nbest = []

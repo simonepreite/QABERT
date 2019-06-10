@@ -12,6 +12,8 @@ from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset, Dist
 from sklearn.metrics import precision_score, recall_score, f1_score
 from collections import namedtuple
 import argparse
+from SQuADDataset import InputFeatures
+
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -63,12 +65,11 @@ def main():
 	globalStep = 0
 	cachedTrainFeaturesFile = outputDir + "/trainFeatures.bin"
 	trainFeatures = None
-	InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
 	try:
 		with open(cachedTrainFeaturesFile, "rb") as reader:
 			trainFeatures = pickle.load(reader)
 	except:
-	trainFeatures = featurizeExamples(trainExamples, tokenizer, 512, 128, 256, True)#to generalize paramenters
+		trainFeatures = featurizeExamples(trainExamples, tokenizer, 512, 128, 256, True) #to generalize paramenters
 		with open(cachedTrainFeaturesFile, "wb") as writer:
 			pickle.dump(trainFeatures, writer)
 	

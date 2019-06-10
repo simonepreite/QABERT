@@ -99,6 +99,8 @@ class QABERT(BERTInitializer):
 		startLogits, endLogits = logits.split(1, dim=-1)
 		startLogits = startLogits.squeeze(-1)
 		endLogits = endLogits.squeeze(-1)
+
+		return startLogits, endLogits, isImpOutput
 """
 		if startPositions is not None and endPositions is not None:
 			if len(startPositions.size()) > 1:
@@ -116,7 +118,6 @@ class QABERT(BERTInitializer):
 			return (startLoss + endLoss) / 2
 		else:
 """
-		return startLogits, endLogits, isImpOutput
 
 
 

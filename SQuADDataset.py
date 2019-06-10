@@ -444,7 +444,7 @@ def writePredictions(squadExamples, squadFeatures, squadResults, nBestSize, maxA
 		with open(outputOddsPath, "w") as writer:
 			writer.write(json.dumps(scoreDiffs, indent=4) + "\n")
 
-
+"""
 examples = readSQuADDataset("./train-v2.0.json", True)[:2]
 print(examples)
 
@@ -452,6 +452,7 @@ tokenizer = BERTTokenizer("./vocab.txt")
 
 features = featurizeExamples(examples, tokenizer, 384, 128, 64, True)
 print(features)
+"""
 """
 features = []
 for (example_index, example) in enumerate(examples):

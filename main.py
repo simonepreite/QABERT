@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-import torch 
+import torch
 import random
 import numpy as np
 from BERT import QABERT
-from SQuADDataset import featurizeExamples, readSquadDataset
+from Tokenization import BERTTokenizer
+from SQuADDataset import featurizeExamples, readSQuADDataset
 from torch.nn import BCELoss, CrossEntropyLoss
 from torch.optim import Adam
 from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset)
-from sklearn.metrics import precision_score, recall_score, f1_ccore
+from sklearn.metrics import precision_score, recall_score, f1_score
 import argparse
 
 def main():
@@ -30,7 +31,7 @@ def main():
 	trainBatchSize = 12
 	numTrainEpochs = 1 # these both are parameter that have to come from the commmand line
 	
-	device = torch.device("cuda" if torch.cuda.is_avaliable() else "cpu")
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	nGPU = torch.cuda.device_count()
 	random.seed(seed)
 	np.random.seed(seed)
@@ -38,9 +39,9 @@ def main():
 		torch.cuda.manual_seed_all(seed)
 	
 	tokenizer = BERTTokenizer(vocabFile)
-	trainExamples = readSquadDataset(trainFile, True, squadV2=True)
+	trainExamples = readSQuADDataset(trainFile, True, squadV2=True)
 	numTrainOptimizationStep = len(trainExamples) // trainBatchSize * numTrainEpochs
-	model = QABERT.loadPretrained(modelWeights, False, "")
+	model = QABERT.loadPretrained(modelWeights, False, "", 768)
 	model.to(device)
 	if nGPU > 1:
 		model = torch.nn.DataParallel(model)
@@ -54,15 +55,17 @@ def main():
 	#TODO: optimizer has to be implemented
 	optimizer = Adam(model.parameters(), lr=3e-5)
 	
+	print("Starting featurization...")
 	globalStep = 0
 	trainFeatures = featurizeExamples(trainExamples, tokenizer, 512, 128, 256, True)#to generalize paramenters
 	
+	print("Starting tensor dataset creation")
 	allInputIDs = torch.tensor([f.inputIDs for f in trainFeatures], dtype=torch.long)
 	allInputMask = torch.tensor([f.inputMask for f in trainFeatures], dtype=torch.long)
 	allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
 	allStartPos = torch.tensor([f.startPos for f in trainFeatures], dtype=torch.long)
 	allEndPos = torch.tensor([f.endPos for f in trainFeatures], dtype=torch.long)
-	allIsImpossible = torch.torch([f.isImpossible for f in trainFeatures], dtype=torch.long)
+	allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.long)
 	
 	trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
 	trainSampler = DistributedSampler(trainData)
@@ -101,7 +104,7 @@ def main():
 			recall = recall_score(isImpossibles, isImpossibleComputed)
 			f1 = f1_score(isImpossibles, isImpossibleComputed)
 
-			print("Step {} - Precision: {}, Recall: {}, F1: {}".format(step, precision, recall, f1))
+			print("Step {} - Loss: {}, Precision: {}, Recall: {}, F1: {}".format(loss, step, precision, recall, f1), end="\r")
 
 	for l in deactivatedLayers:
 		for v in l.paramenters():
@@ -146,7 +149,7 @@ def main():
 	
 	model.to(device)
 
-	evalExamples = readSquadDataset(predictFile, False, squadV2=True)
+	evalExamples = readSQuADDataset(predictFile, False, squadV2=True)
 	evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False)
 
 	print("Predicting...")
@@ -188,7 +191,7 @@ def main():
 		outputNBestFile = os.path.join(outputDir, "nbest_predictions.json")
 		outputNullLogOddsFile = os.path.join(outputDir, "null_odds.json")
 
-		writePredictions(evalExamples, evalFeatures, allResults, nBestSize=20, maxAnswerLength=30, usingLowercase=True, outputPredFile, outputNBestFile, outputNullLogOddsFile, usingV2=True, nullDiffThreshold=0.0)
+		writePredictions(evalExamples, evalFeatures, allResults, 20, 30, True, outputPredFile, outputNBestFile, outputNullLogOddsFile, usingV2=True, nullDiffThreshold=0.0)
 
 	
 	

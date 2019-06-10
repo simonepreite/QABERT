@@ -4,15 +4,29 @@ import random
 import numpy as np
 from BERT import QABERT
 from SQuADDataset import featurizeExamples, readSquadDataset
-from torch.nn import CrossEntropyLoss
+from torch.nn import BCELoss, CrossEntropyLoss
 from torch.optim import Adam
 from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset)
+from sklearn.metrics import precision_score, recall_score, f1_ccore
+import argparse
 
 def main():
+	parser = argparse.ArgumentParser()
+
+	parser.add_argument("--outputDir", default=None, type=str, required=True, help="The output directory where the model checkpoints and predictions will be written.")
+	parser.add_argument("--trainFile", default=None, type=str, required=True)
+	parser.add_argument("--predictFile", default=None, type=str, required=True)
+	parser.add_argument("--vocabFile", default=None, type=str, required=True)
+	parser.add_argument("--modelWeights", default=None, type=str, required=True)
+	args = parser.parse_args()
 	
 	seed = 42
 	
-	outputDir = "./results"
+	outputDir = args.outputDir
+	vocabFile = args.vocabFile
+	trainFile = args.trainFile
+	predictFile = args.predictFile
+	modelWeights = args.modelWeights
 	trainBatchSize = 12
 	numTrainEpochs = 1 # these both are parameter that have to come from the commmand line
 	
@@ -23,19 +37,19 @@ def main():
 	if nGPU > 0:
 		torch.cuda.manual_seed_all(seed)
 	
-	tokenizer = BERTTokenizer("./vocab.txt")
-	trainExamples = readSquadDataset("./train-v2.0.json", True, squadV2=True)
+	tokenizer = BERTTokenizer(vocabFile)
+	trainExamples = readSquadDataset(trainFile, True, squadV2=True)
 	numTrainOptimizationStep = len(trainExamples) // trainBatchSize * numTrainEpochs
-	model = QABERT.loadPretrained("../BERT Checkpoints PyTorch/Bert Base Uncased/bert-base-uncased.bin", False, "")
+	model = QABERT.loadPretrained(modelWeights, False, "")
 	model.to(device)
 	if nGPU > 1:
 		model = torch.nn.DataParallel(model)
 	
-	no_decay = ['bias', 'NormLayer.bias', 'NormLayer.weight']
-	optimizer_grouped_parameters = [
-		{'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
-		{'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-		]
+	# no_decay = ['bias', 'NormLayer.bias', 'NormLayer.weight']
+	# optimizer_grouped_parameters = [
+	# 	{'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
+	# 	{'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+	# 	]
 	
 	#TODO: optimizer has to be implemented
 	optimizer = Adam(model.parameters(), lr=3e-5)
@@ -60,6 +74,7 @@ def main():
 		for v in l.paramenters():
 			v.requires_grad = False
 	
+	print("Start training for isImpossible part")
 	# Training for the isImpossible part of the network
 	for _ in range(int(numTrainEpochs)):
 		for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for IsImpossible")):
@@ -70,7 +85,7 @@ def main():
 			_, _, isImpossibleComputed = model(inputIDs, inputMask, segmentIDs)
 
 			classWeights = torch.tensor([1, 2])
-			weightedLossFun = CrossEntropyLoss(weight=classWeights)
+			weightedLossFun = BCELoss(weight=classWeights)
 			loss = weightedLossFun(isImpossibleComputed, isImpossibles)
 
 			if nGPU > 1:
@@ -81,6 +96,12 @@ def main():
 			optimizer.step()
 			optimizer.zero_grad()
 			globalStep += 1
+
+			precision = precision_score(isImpossibles, isImpossibleComputed)
+			recall = recall_score(isImpossibles, isImpossibleComputed)
+			f1 = f1_score(isImpossibles, isImpossibleComputed)
+
+			print("Step {} - Precision: {}, Recall: {}, F1: {}".format(step, precision, recall, f1))
 
 	for l in deactivatedLayers:
 		for v in l.paramenters():
@@ -125,7 +146,7 @@ def main():
 	
 	model.to(device)
 
-	evalExamples = readSquadDataset("./dev-v2.0.json", False, squadV2=True)
+	evalExamples = readSquadDataset(predictFile, False, squadV2=True)
 	evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False)
 
 	print("Predicting...")
@@ -173,3 +194,4 @@ def main():
 	
 if __name__ == "__main__":
 	main()
+

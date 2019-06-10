@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import pickle
 import torch
 import random
 import numpy as np
@@ -7,8 +8,9 @@ from Tokenization import BERTTokenizer
 from SQuADDataset import featurizeExamples, readSQuADDataset
 from torch.nn import BCELoss, CrossEntropyLoss
 from torch.optim import Adam
-from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset)
+from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset, DistributedSampler, RandomSampler)
 from sklearn.metrics import precision_score, recall_score, f1_score
+from collections import namedtuple
 import argparse
 
 def main():
@@ -33,6 +35,8 @@ def main():
 	
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	nGPU = torch.cuda.device_count()
+	#torch.distributed.init_process_group(backend='nccl')
+
 	random.seed(seed)
 	np.random.seed(seed)
 	if nGPU > 0:
@@ -57,7 +61,16 @@ def main():
 	
 	print("Starting featurization...")
 	globalStep = 0
+	cachedTrainFeaturesFile = outputDir + "/trainFeatures.bin"
+	trainFeatures = None
+	InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
+	try:
+		with open(cachedTrainFeaturesFile, "rb") as reader:
+			trainFeatures = pickle.load(reader)
+	except:
 	trainFeatures = featurizeExamples(trainExamples, tokenizer, 512, 128, 256, True)#to generalize paramenters
+		with open(cachedTrainFeaturesFile, "wb") as writer:
+			pickle.dump(trainFeatures, writer)
 	
 	print("Starting tensor dataset creation...")
 	allInputIDs = torch.tensor([f.inputIDs for f in trainFeatures], dtype=torch.long)
@@ -68,7 +81,8 @@ def main():
 	allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.long)
 	
 	trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
-	trainSampler = DistributedSampler(trainData)
+	#trainSampler = DistributedSampler(trainData)
+	trainSampler = RandomSampler(trainData)
 	trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=trainBatchSize)
 
 	print("Starting dev dataset creation...")
@@ -80,7 +94,7 @@ def main():
 	allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
 	allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
 	allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
-	evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
+	evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex, allIsImpossible)
 
 	evalSampler = SequentialSampler(evalData)
 	evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=trainBatchSize)

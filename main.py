@@ -59,7 +59,7 @@ def main():
 	globalStep = 0
 	trainFeatures = featurizeExamples(trainExamples, tokenizer, 512, 128, 256, True)#to generalize paramenters
 	
-	print("Starting tensor dataset creation")
+	print("Starting tensor dataset creation...")
 	allInputIDs = torch.tensor([f.inputIDs for f in trainFeatures], dtype=torch.long)
 	allInputMask = torch.tensor([f.inputMask for f in trainFeatures], dtype=torch.long)
 	allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
@@ -70,6 +70,31 @@ def main():
 	trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
 	trainSampler = DistributedSampler(trainData)
 	trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=trainBatchSize)
+
+	print("Starting dev dataset creation...")
+	evalExamples = readSQuADDataset(predictFile, False, squadV2=True)
+	evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False)
+
+	allInputIDs = torch.tensor([f.inputIDs for f in evalFeatures], dtype=torch.long)
+	allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
+	allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
+	allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
+	allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
+	evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
+
+	evalSampler = SequentialSampler(evalData)
+	evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=trainBatchSize)
+
+	evalBatchInputIDs, evalBatchInputMask, evalBatchSegmentIDs, evalBatchExampleIndices, evalIsImpossibles = next(iter(evalDataLoader))
+	evalBatchInputIDs = evalBatchInputIDs.to(device)
+	evalBatchInputMask = evalBatchInputMask.to(device)
+	evalBatchSegmentIDs = evalBatchSegmentIDs.to(device)
+	evalIsImpossibles = evalIsImpossibles.to(device)
+
+
+
+
+	print("Training...")
 	model.train()
 
 	deactivatedLayers = [model.bert, model.qaLinear1, model.qaLinear2, model.qaOutput]
@@ -79,7 +104,7 @@ def main():
 	
 	print("Start training for isImpossible part")
 	# Training for the isImpossible part of the network
-	for _ in range(int(numTrainEpochs)):
+	for epoch in range(int(numTrainEpochs)):
 		for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for IsImpossible")):
 			if nGPU == 1:
 				batch = tuple(t.to(device) for t in batch)
@@ -104,7 +129,16 @@ def main():
 			recall = recall_score(isImpossibles, isImpossibleComputed)
 			f1 = f1_score(isImpossibles, isImpossibleComputed)
 
-			print("Step {} - Loss: {}, Precision: {}, Recall: {}, F1: {}".format(loss, step, precision, recall, f1), end="\r")
+			print("Step: {} - Loss: {}, Precision: {}, Recall: {}, F1: {}".format(loss, step, precision, recall, f1), end="\r")
+
+		with torch.no_grad():
+			batchStartLogits, batchEndLogits, batchIsImpossible = model(evalBatchInputIDs, evalBatchInputMask, evalBatchSegmentIDs)
+
+		precision = precision_score(evalIsImpossibles, batchIsImpossible)
+		recall = recall_score(evalIsImpossibles, batchIsImpossible)
+		f1 = f1_score(evalIsImpossibles, batchIsImpossible)
+
+		print("Epoch: {} - Precision: {}, Recall: {}, F1: {}".format(epoch, precision, recall, f1))
 
 	for l in deactivatedLayers:
 		for v in l.paramenters():
@@ -149,27 +183,11 @@ def main():
 	
 	model.to(device)
 
-	evalExamples = readSQuADDataset(predictFile, False, squadV2=True)
-	evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False)
-
 	print("Predicting...")
-
-	allInputIDs = torch.tensor([f.inputIDs for f in evalFeatures], dtype=torch.long)
-	allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
-	allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
-	# allStartPos = torch.tensor([f.startPos for f in evalFeatures], dtype=torch.long)
-	# allEndPos = torch.tensor([f.endPos for f in evalFeatures], dtype=torch.long)
-	# allIsImpossible = torch.torch([f.isImpossible for f in evalFeatures], dtype=torch.long)
-	allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
-	evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
-
-	evalSampler = SequentialSampler(evalData)
-	evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=trainBatchSize)
-
 	model.eval()
 	allResults = []
 
-	for inputIDs, inputMask, segmentIDs, exampleIndices in tqdm(eval_dataloader, desc="Evaluating"):
+	for inputIDs, inputMask, segmentIDs, exampleIndices in tqdm(evalDataLoader, desc="Evaluating"):
 		if len(allResults) % 1000 == 0:
 			logger.info("Processing example: %d" % (len(allResults)))
 

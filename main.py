@@ -129,9 +129,14 @@ def main():
 			inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
 			print("inputIDs: {}, segmentIDs: {}, isImpossibles: {}".format(inputIDs.size(), segmentIDs.size(), isImpossibles.size()))
 			_, _, isImpossibleComputed = model(inputIDs, inputMask, segmentIDs)
-			print("isImpossibleComputed: {}".format(isImpossibleComputed.size()))
+			print("isImpossibleComputed: {}\n{}".format(isImpossibleComputed.size(), isImpossibleComputed))
 
-			classWeights = torch.tensor([1, 2])
+			isImpossibles = isImpossibles.view(-1, 1)
+			isImpossiblesNeg = 1 - isImpossibles
+			isImpossibles = torch.cat((isImpossiblesNeg, isImpossibles), dim=1)
+			print("isImpossibles GT:\n", isImpossibles)
+
+			classWeights = torch.tensor([1., 2.])
 			weightedLossFun = BCELoss(weight=classWeights)
 			loss = weightedLossFun(isImpossibleComputed, isImpossibles)
 

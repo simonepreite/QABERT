@@ -82,7 +82,7 @@ class QABERT(BERTInitializer):
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 		self.apply(self.weightsInitialization)
 		self.midIsImpossibleLinear = nn.Linear(hiddenSize, 256)
-		self.isImpossibleOutput = nn.Linear(512*256, 1) #TODO: 512 sequence length, da parametrizzare
+		self.isImpossibleOutput = nn.Linear(512*256, 2) #TODO: 512 sequence length, da parametrizzare
 		self.qaLinear1 = nn.Linear(hiddenSize + 256, hiddenSize + 256)
 		self.qaLinear2 = nn.Linear(hiddenSize + 256, 64)
 		self.qaOutput = nn.Linear(64, 2)
@@ -101,6 +101,7 @@ class QABERT(BERTInitializer):
 #		print("midIsImpOutputFlattened shape:", midIsImpOutputFlattened.size())
 
 		isImpOutput = self.isImpossibleOutput(midIsImpOutputFlattened)
+		isImpOutput = isImpOutput.squeeze()
 #		print("self.isImpossibleOutput later: {} - output shape: {}".format(self.isImpossibleOutput, isImpOutput.size()))
 
 		

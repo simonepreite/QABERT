@@ -20,19 +20,25 @@ class BERTEmbeddings(nn.Module):
 	def forward(self, inputIDs, sequenceIDs):
 		we = self.wordEmbeddings(inputIDs)
 		se = self.seqEmbeddings(sequenceIDs)
-		hiddenSize = we.size(1)
-		pe = torch.zeros(self.maxLen, hiddenSize)
-		pe.require_grad = False
+		
+		seqLength = inputIDs.size(1)
+		posIDs = torch.arange(seqLength, dtype=torch.long, device=inputIDs.device)
+		posIDs = posIDs.unsqueeze(0).expand_as(inputIDs)
+		pe = self.posEmbeddings(posIDs)
+		
+		#hiddenSize = inputIDs.size(1)
+		#pe = torch.zeros(self.maxLen, hiddenSize)
+		#pe.require_grad = False
 
-		positionIDs = torch.arange(self.maxLen).unsqueeze(1)
-		normTerm = (torch.arange(hiddenSize,2) * -(math.log(10000) / hiddenSize)).exp()
+		#positionIDs = torch.arange(self.maxLen).unsqueeze(1)
+		#normTerm = (torch.arange(hiddenSize,2) * -(math.log(10000) / hiddenSize)).exp()
 
-		pe[:, 0::2] = torch.sin(positionIDs * normTerm)
-		pe[:, 1::2] = torch.cos(positionIDs * normTerm)
+		#pe[:, 0::2] = torch.sin(positionIDs * normTerm)
+		#pe[:, 1::2] = torch.cos(positionIDs * normTerm)
 
-		pe = pe.unsqueeze(0)
-		self.register_buffer('pe', pe)
-		pe = self.pe[:, inputIDs.size(1)]
+		#pe = pe.unsqueeze(0)
+		#self.register_buffer('pe', pe)
+		#pe = self.pe[:, inputIDs.size(1)]
 
 		embeddings = self.normLayer(we + pe + se)
 		return self.dropout(embeddings)

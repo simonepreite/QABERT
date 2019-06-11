@@ -40,7 +40,7 @@ def convertTensorFlowWeights(model, checkpointPath, outputPath=None):
  
 		for elem in key.split("/"):
 			if re.fullmatch(r'[A-Za-z]+_\d+', elem):
-				modelPtr = getattr(modelPtr, '0')
+				#modelPtr = getattr(modelPtr, '0')
 				split = re.split(r'_(\d+)', elem)
 				if (len(split) > 1):
 					layerNumber = split[1]

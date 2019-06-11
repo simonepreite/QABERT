@@ -11,6 +11,7 @@ from torch.optim import Adam
 from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset, DistributedSampler, RandomSampler)
 from sklearn.metrics import precision_score, recall_score, f1_score
 from collections import namedtuple
+from tqdm import tqdm, trange
 import argparse
 from SQuADDataset import InputFeatures
 
@@ -114,7 +115,7 @@ def main():
 
 	deactivatedLayers = [model.bert, model.qaLinear1, model.qaLinear2, model.qaOutput]
 	for l in deactivatedLayers:
-		for v in l.paramenters():
+		for v in l.parameters():
 			v.requires_grad = False
 	
 	print("Start training for isImpossible part")
@@ -123,9 +124,12 @@ def main():
 		for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for IsImpossible")):
 			if nGPU == 1:
 				batch = tuple(t.to(device) for t in batch)
-
+			print(batch)
+			print("\n")
 			inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
+			print("inputIDs: {}, segmentIDs: {}, isImpossibles: {}".format(inputIDs.size(), segmentIDs.size(), isImpossibles.size()))
 			_, _, isImpossibleComputed = model(inputIDs, inputMask, segmentIDs)
+			print("isImpossibleComputed: {}".format(isImpossibleComputed.size()))
 
 			classWeights = torch.tensor([1, 2])
 			weightedLossFun = BCELoss(weight=classWeights)
@@ -156,12 +160,12 @@ def main():
 		print("Epoch: {} - Precision: {}, Recall: {}, F1: {}".format(epoch, precision, recall, f1))
 
 	for l in deactivatedLayers:
-		for v in l.paramenters():
+		for v in l.parameters():
 			v.requires_grad = True
 
 	deactivatedLayers = [model.bert, model.midIsImpossibleLinear, model.isImpossibleOutput]
 	for l in deactivatedLayers:
-		for v in l.paramenters():
+		for v in l.parameters():
 			v.requires_grad = False
 
 	# Training for the QA part of the network

@@ -103,7 +103,7 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-train-v2\.0\.json
+#train-v2\.0\.json
 .DS_Store
 *.bin
 *.pt

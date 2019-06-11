@@ -35,10 +35,16 @@ def main():
 	modelWeights = args.modelWeights
 	trainBatchSize = 12
 	numTrainEpochs = 1 # these both are parameter that have to come from the commmand line
-	
+
+	#if torch.cuda.is_available()
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	nGPU = torch.cuda.device_count()
-	#torch.distributed.init_process_group(backend='nccl')
+	
+#	torch.cuda.set_device(0)
+#	device = torch.device("cuda", 0)
+#	nGPU = 1
+	# Initializes the distributed backend which will take care of sychronizing nodes/GPUs
+#	torch.distributed.init_process_group(backend='nccl', rank=0, world_size=2)
 
 	random.seed(seed)
 	np.random.seed(seed)
@@ -49,10 +55,10 @@ def main():
 	trainExamples = readSQuADDataset(trainFile, True, squadV2=True)
 	numTrainOptimizationStep = len(trainExamples) // trainBatchSize * numTrainEpochs
 	model = QABERT.loadPretrained(modelWeights, False, "", 768)
-	model.to(device)
+#	model.to(device)
 	if nGPU > 1:
 		model = torch.nn.DataParallel(model)
-	
+	model.to(device)
 	# no_decay = ['bias', 'NormLayer.bias', 'NormLayer.weight']
 	# optimizer_grouped_parameters = [
 	# 	{'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
@@ -80,7 +86,7 @@ def main():
 	allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
 	allStartPos = torch.tensor([f.startPos for f in trainFeatures], dtype=torch.long)
 	allEndPos = torch.tensor([f.endPos for f in trainFeatures], dtype=torch.long)
-	allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.long)
+	allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
 	
 	trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
 	#trainSampler = DistributedSampler(trainData)
@@ -95,7 +101,7 @@ def main():
 	allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
 	allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
 	allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
-	allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
+	allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.float)
 	evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex, allIsImpossible)
 
 	evalSampler = SequentialSampler(evalData)
@@ -113,7 +119,10 @@ def main():
 	print("Training...")
 	model.train()
 
-	deactivatedLayers = [model.bert, model.qaLinear1, model.qaLinear2, model.qaOutput]
+	if nGPU > 1:
+		deactivatedLayers = [model.module.bert, model.module.qaLinear1, model.module.qaLinear2, model.module.qaOutput]
+	else:
+		deactivatedLayers = [model.bert, model.qaLinear1, model.qaLinear2, model.qaOutput]
 	for l in deactivatedLayers:
 		for v in l.parameters():
 			v.requires_grad = False
@@ -122,22 +131,24 @@ def main():
 	# Training for the isImpossible part of the network
 	for epoch in range(int(numTrainEpochs)):
 		for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for IsImpossible")):
-			if nGPU == 1:
+			if nGPU >= 1:
 				batch = tuple(t.to(device) for t in batch)
-			print(batch)
-			print("\n")
+#			print(batch)
+#			print("\n")
 			inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
-			print("inputIDs: {}, segmentIDs: {}, isImpossibles: {}".format(inputIDs.size(), segmentIDs.size(), isImpossibles.size()))
+#			print("inputIDs: {}, segmentIDs: {}, isImpossibles: {}".format(inputIDs.size(), segmentIDs.size(), isImpossibles.size()))
 			_, _, isImpossibleComputed = model(inputIDs, inputMask, segmentIDs)
-			print("isImpossibleComputed: {}\n{}".format(isImpossibleComputed.size(), isImpossibleComputed))
+#			print("isImpossibleComputed: {} type: {}\n{}".format(isImpossibleComputed.size(), isImpossibleComputed.dtype, isImpossibleComputed))
 
 			isImpossibles = isImpossibles.view(-1, 1)
 			isImpossiblesNeg = 1 - isImpossibles
-			isImpossibles = torch.cat((isImpossiblesNeg, isImpossibles), dim=1)
-			print("isImpossibles GT:\n", isImpossibles)
+			isImpossibles = torch.cat((isImpossiblesNeg, isImpossibles), dim=1).float()
+#			print("isImpossibles GT: {} type: {}\n{}".format(isImpossibles.size(), isImpossibles.dtype, isImpossibles))
 
+#			print("computed:", isImpossibleComputed.device)
+#			print("batch:", isImpossibles.device)
 			classWeights = torch.tensor([1., 2.])
-			weightedLossFun = BCELoss(weight=classWeights)
+			weightedLossFun = BCELoss(weight=classWeights).cuda()
 			loss = weightedLossFun(isImpossibleComputed, isImpossibles)
 
 			if nGPU > 1:
@@ -149,18 +160,23 @@ def main():
 			optimizer.zero_grad()
 			globalStep += 1
 
-			precision = precision_score(isImpossibles, isImpossibleComputed)
-			recall = recall_score(isImpossibles, isImpossibleComputed)
-			f1 = f1_score(isImpossibles, isImpossibleComputed)
+			precision = precision_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
+			recall = recall_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
+			f1 = f1_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
 
-			print("Step: {} - Loss: {}, Precision: {}, Recall: {}, F1: {}".format(loss, step, precision, recall, f1), end="\r")
+			tqdm.write("Step: {} - Loss: {}, Precision: {}, Recall: {}, F1: {}".format(step, loss, precision, recall, f1))
 
 		with torch.no_grad():
 			batchStartLogits, batchEndLogits, batchIsImpossible = model(evalBatchInputIDs, evalBatchInputMask, evalBatchSegmentIDs)
 
-		precision = precision_score(evalIsImpossibles, batchIsImpossible)
-		recall = recall_score(evalIsImpossibles, batchIsImpossible)
-		f1 = f1_score(evalIsImpossibles, batchIsImpossible)
+
+		evalIsImpossibles = evalIsImpossibles.view(-1, 1)
+		evalIsImpossiblesNeg = 1 - evalIsImpossibles
+		evalIsImpossibles = torch.cat((evalIsImpossiblesNeg, evalIsImpossibles), dim=1).float()
+
+		precision = precision_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
+		recall = recall_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
+		f1 = f1_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
 
 		print("Epoch: {} - Precision: {}, Recall: {}, F1: {}".format(epoch, precision, recall, f1))
 

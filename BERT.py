@@ -56,7 +56,7 @@ class BERTModel(BERTInitializer):
 		
 		
 	def forward(self, inputIDs, sequenceIDs, attentionMask=None):
-		print("BERTModel forward")
+#		print("BERTModel forward")
 		#x = torch.FloatTensor([[[ 0.9059, -0.7039, -0.3376,  0.1968],[-1.0413,  0.8128,  0.0697, -0.6166],[-0.3793, -0.9851, -2.3841, -0.7003],[ 0.6076, -1.4874, -0.1079,  0.4266]]])
 
 		#inputIDs = torch.randn(1, 4)
@@ -67,11 +67,11 @@ class BERTModel(BERTInitializer):
 		extendedAttentionMask = (1.0 - extendedAttentionMask) * -10000.0
 		
 		embeddingOutput = self.embeddings(inputIDs, sequenceIDs)
-		print("embedding output shape:", embeddingOutput.size())
+#		print("embedding output shape:", embeddingOutput.size())
 		encodedLayers = embeddingOutput
 		for layer in self.encoder:
 			encodedLayers = layer(encodedLayers, extendedAttentionMask)
-		print("last encoded layer shape:", encodedLayers.size())
+#		print("last encoded layer shape:", encodedLayers.size())
 		return encodedLayers
 		
 
@@ -86,12 +86,15 @@ class QABERT(BERTInitializer):
 		self.qaLinear1 = nn.Linear(hiddenSize + 256, hiddenSize + 256)
 		self.qaLinear2 = nn.Linear(hiddenSize + 256, 64)
 		self.qaOutput = nn.Linear(64, 2)
+		self.relu = nn.ReLU()
+		self.softmax = nn.Softmax(dim=-1)
+		self.qaSoftmax = nn.Softmax(dim=2)
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask, startPositions=None, endPositions=None):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
 #		print("self.bert layer output shape: {}".format(bertOutput.size()))
 
-		midIsImpOutput = self.midIsImpossibleLinear(bertOutput)
+		midIsImpOutput = self.relu(self.midIsImpossibleLinear(bertOutput))
 #		print("self.midIsImpossibleLinear layer: {} - output shape: {}".format(self.midIsImpossibleLinear, midIsImpOutput.size()))
 
 		batchSize = midIsImpOutput.size()[0] # should be batch size
@@ -101,15 +104,15 @@ class QABERT(BERTInitializer):
 #		print("midIsImpOutputFlattened shape:", midIsImpOutputFlattened.size())
 
 		isImpOutput = self.isImpossibleOutput(midIsImpOutputFlattened)
-		isImpOutput = isImpOutput.squeeze()
+		isImpOutput = self.softmax(isImpOutput.squeeze())
 #		print("self.isImpossibleOutput later: {} - output shape: {}".format(self.isImpossibleOutput, isImpOutput.size()))
 
 		
 
 		concat = torch.cat((bertOutput, midIsImpOutput), dim=-1)
-		qaOutput1 = self.qaLinear1(concat)
-		qaOutput2 = self.qaLinear2(qaOutput1)
-		logits = self.qaOutput(qaOutput2)
+		qaOutput1 = self.relu(self.qaLinear1(concat))
+		qaOutput2 = self.relu(self.qaLinear2(qaOutput1))
+		logits = self.qaSoftmax(self.qaOutput(qaOutput2))
 		
 		#logits = self.qaOutput(bertOutput)
 		startLogits, endLogits = logits.split(1, dim=-1)

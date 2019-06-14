@@ -66,8 +66,8 @@ def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 				endP = None
 				answerText = None
 				isImpossible = False
-				if trainingMode:
-					startP, endP, answerText, isImpossible = answerElements(questionAnswer, wordOffset, squadV2)
+#				if trainingMode:
+				startP, endP, answerText, isImpossible = answerElements(questionAnswer, wordOffset, squadV2)
 
 				sample = SQuADExample(parWords=wordList, questionAnswerID=questionAnswerID, questionText=questionText, startPos=startP, endPos=endP, answerText=answerText, isImpossible=isImpossible)
 				squadExamples.append(sample)

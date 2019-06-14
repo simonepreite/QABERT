@@ -5,16 +5,16 @@ import random
 import numpy as np
 from BERT import QABERT
 from Tokenization import BERTTokenizer
-from SQuADDataset import featurizeExamples, readSQuADDataset
 from torch.nn import BCELoss, CrossEntropyLoss
 from torch.optim import Adam
 from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset, DistributedSampler, RandomSampler)
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from collections import namedtuple
 from tqdm import tqdm, trange
 import argparse
-from SQuADDataset import InputFeatures
+from SQuADDataset import InputFeatures, readSQuADDataset, featurizeExamples
 from utils import saveVocab
+from datetime import datetime
 
 
 def main():
@@ -25,6 +25,7 @@ def main():
 	parser.add_argument("--predictFile", default=None, type=str, required=True)
 	parser.add_argument("--vocabFile", default=None, type=str, required=True)
 	parser.add_argument("--modelWeights", default=None, type=str, required=True)
+	parser.add_argument("--doTraining", default=True, type=bool)
 	args = parser.parse_args()
 	
 	seed = 42
@@ -34,8 +35,11 @@ def main():
 	trainFile = args.trainFile
 	predictFile = args.predictFile
 	modelWeights = args.modelWeights
-	trainBatchSize = 16
-	numTrainEpochs = 1 # these both are parameter that have to come from the commmand line
+	#doTraining = args.doTraining
+	doTraining = True
+	trainBatchSize = 256
+	evalBatchSize = 256
+	numTrainEpochs = 5 # these both are parameter that have to come from the commmand line
 
 	#if torch.cuda.is_available()
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,7 +71,7 @@ def main():
 	# 	]
 	
 	#TODO: optimizer has to be implemented
-	optimizer = Adam(model.parameters(), lr=3e-5)
+	optimizer = Adam(model.parameters(), lr=3e-4)
 	
 	print("Starting featurization...")
 	globalStep = 0
@@ -96,7 +100,9 @@ def main():
 
 	print("Starting dev dataset creation...")
 	evalExamples = readSQuADDataset(predictFile, False, squadV2=True)
-	evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False)
+	print(evalExamples[0].isImpossible)
+	print(evalExamples[5].isImpossible)
+#	evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False)
 
 	cachedEvalFeaturesFile = outputDir + "/evalFeatures.bin"
 	evalFeatures = None
@@ -104,7 +110,7 @@ def main():
 		with open(cachedEvalFeaturesFile, "rb") as reader:
 			evalFeatures = pickle.load(reader)
 	except:
-		evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, True) #to generalize paramenters
+		evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False) #to generalize paramenters
 		with open(cachedEvalFeaturesFile, "wb") as writer:
 			pickle.dump(evalFeatures, writer)
 
@@ -112,114 +118,142 @@ def main():
 	allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
 	allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
 	allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
-	allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.float)
-	evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex, allIsImpossible)
+#	allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
+	evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
 
 	evalSampler = SequentialSampler(evalData)
-	evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=128)
+	evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=evalBatchSize)
 
-	evalBatchInputIDs, evalBatchInputMask, evalBatchSegmentIDs, evalBatchExampleIndices, evalIsImpossibles = next(iter(evalDataLoader))
-	evalBatchInputIDs = evalBatchInputIDs.to(device)
-	evalBatchInputMask = evalBatchInputMask.to(device)
-	evalBatchSegmentIDs = evalBatchSegmentIDs.to(device)
-	evalBatchExampleIndices = evalBatchExampleIndices.to(device)
-	evalIsImpossibles = evalIsImpossibles.to(device)
-
-
+#	evalBatchInputIDs, evalBatchInputMask, evalBatchSegmentIDs, evalBatchExampleIndices, evalIsImpossibles = next(iter(evalDataLoader))
+#	evalBatchInputIDs = evalBatchInputIDs.to(device)
+#	evalBatchInputMask = evalBatchInputMask.to(device)
+#	evalBatchSegmentIDs = evalBatchSegmentIDs.to(device)
+#	evalBatchExampleIndices = evalBatchExampleIndices.to(device)
+#	evalIsImpossibles = evalIsImpossibles.to(device)
 
 
-	print("Training...")
-	model.train()
 
-	if nGPU > 1:
-		deactivatedLayers = [model.module.bert, model.module.qaLinear1, model.module.qaLinear2, model.module.qaOutput]
-	else:
-		deactivatedLayers = [model.bert, model.qaLinear1, model.qaLinear2, model.qaOutput]
-	for l in deactivatedLayers:
-		for v in l.parameters():
-			v.requires_grad = False
+	if doTraining:
+		print("Training...")
+		model.train()
+
+		if nGPU > 1:
+			deactivatedLayers = [model.module.bert, model.module.qaLinear1, model.module.qaLinear2, model.module.qaOutput]
+		else:
+			deactivatedLayers = [model.bert, model.qaLinear1, model.qaLinear2, model.qaOutput]
+		for l in deactivatedLayers:
+			for v in l.parameters():
+				v.requires_grad = False
 	
-	print("Start training for isImpossible part")
-	# Training for the isImpossible part of the network
-	for epoch in trange(int(numTrainEpochs)):
-		for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for IsImpossible")):
-			if nGPU >= 1:
-				batch = tuple(t.to(device) for t in batch)
-#			print(batch)
-#			print("\n")
-			inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
-#			print("inputIDs: {}, segmentIDs: {}, isImpossibles: {}".format(inputIDs.size(), segmentIDs.size(), isImpossibles.size()))
-			_, _, isImpossibleComputed = model(inputIDs, inputMask, segmentIDs)
-#			print("isImpossibleComputed: {} type: {}\n{}".format(isImpossibleComputed.size(), isImpossibleComputed.dtype, isImpossibleComputed))
+		print("Start training for isImpossible part")
+		# Training for the isImpossible part of the network
+		for epoch in trange(int(numTrainEpochs)):
+			for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for IsImpossible")):
+				if nGPU >= 1:
+					batch = tuple(t.to(device) for t in batch)
+#				print(batch)
+#				print("\n")
+				inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
+#				print("inputIDs: {}, segmentIDs: {}, isImpossibles: {}".format(inputIDs.size(), segmentIDs.size(), isImpossibles.size()))
+				_, _, isImpossibleComputed = model(inputIDs, inputMask, segmentIDs)
+#				print("isImpossibleComputed: {} type: {}\n{}".format(isImpossibleComputed.size(), isImpossibleComputed.dtype, isImpossibleComputed))
 
-			isImpossibles = isImpossibles.view(-1, 1)
-			isImpossiblesNeg = 1 - isImpossibles
-			isImpossibles = torch.cat((isImpossiblesNeg, isImpossibles), dim=1).float()
-#			print("isImpossibles GT: {} type: {}\n{}".format(isImpossibles.size(), isImpossibles.dtype, isImpossibles))
+#				isImpossibles = isImpossibles.view(-1, 1)
+#				isImpossiblesNeg = 1 - isImpossibles
+#				isImpossibles = torch.cat((isImpossiblesNeg, isImpossibles), dim=1).float()
+#				print("isImpossibles GT: {} type: {}\n{}".format(isImpossibles.size(), isImpossibles.dtype, isImpossibles))
 
-#			print("computed:", isImpossibleComputed.device)
-#			print("batch:", isImpossibles.device)
-			classWeights = torch.tensor([1., 2.])
-			weightedLossFun = BCELoss(weight=classWeights).cuda()
-			loss = weightedLossFun(isImpossibleComputed, isImpossibles)
+#				print("computed:", isImpossibleComputed.device)
+#				print("batch:", isImpossibles.device)
+#				classWeights = torch.tensor([1., 2.])
+#				weightedLossFun = BCELoss(weight=classWeights).cuda()
+				weightedLossFun = BCELoss().cuda()
+				loss = weightedLossFun(isImpossibleComputed, isImpossibles)
 
-			if nGPU > 1:
-				loss = loss.mean()
+				if nGPU > 1:
+					loss = loss.mean()
 
-			loss.backward()
+				loss.backward()
 
-			optimizer.step()
-			optimizer.zero_grad()
-			globalStep += 1
+				optimizer.step()
+				optimizer.zero_grad()
+				globalStep += 1
 
-			# precision = precision_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
-			# recall = recall_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
-			# f1 = f1_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
+				# precision = precision_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
+				# recall = recall_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
+				# f1 = f1_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
 
-			# tqdm.write("Step: {} - Loss: {}, Precision: {}, Recall: {}, F1: {}".format(step, loss, precision, recall, f1))
+				# tqdm.write("Step: {} - Loss: {}, Precision: {}, Recall: {}, F1: {}".format(step, loss, precision, recall, f1))
 
-		# with torch.no_grad():
-		# 	batchStartLogits, batchEndLogits, batchIsImpossible = model(evalBatchInputIDs, evalBatchInputMask, evalBatchSegmentIDs)
+			# with torch.no_grad():
+			# 	batchStartLogits, batchEndLogits, batchIsImpossible = model(evalBatchInputIDs, evalBatchInputMask, evalBatchSegmentIDs)
 
 
-		# evalIsImpossibles = evalIsImpossibles.view(-1, 1)
-		# evalIsImpossiblesNeg = 1 - evalIsImpossibles
-		# evalIsImpossibles = torch.cat((evalIsImpossiblesNeg, evalIsImpossibles), dim=1).float()
+			# evalIsImpossibles = evalIsImpossibles.view(-1, 1)
+			# evalIsImpossiblesNeg = 1 - evalIsImpossibles
+			# evalIsImpossibles = torch.cat((evalIsImpossiblesNeg, evalIsImpossibles), dim=1).float()
 
-		# precision = precision_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
-		# recall = recall_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
-		# f1 = f1_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
+			# precision = precision_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
+			# recall = recall_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
+			# f1 = f1_score(evalIsImpossibles.detach().cpu(), batchIsImpossible.detach().cpu() > 0.5, average="micro")
 
-		# print("Epoch: {} - Precision: {}, Recall: {}, F1: {}".format(epoch, precision, recall, f1))
+			# print("Epoch: {} - Precision: {}, Recall: {}, F1: {}".format(epoch, precision, recall, f1))
 
-	modelToSave = model.module if hasattr(model, "module") else model
+		modelToSave = model.module if hasattr(model, "module") else model
 
-	print("Saving model...")
-	outputModelFile = outputDir + "/isImpossibleTrained.bin"
-	torch.save(modelToSave.state_dict(), outputModelFile)
+		print("Saving model...")
+		outputModelFile = outputDir + "/{}_{}_isImpossibleTrained.bin".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), trainBatchSize)
+		torch.save(modelToSave.state_dict(), outputModelFile)
 
 	print("Predicting...")
 
 	model.to(device)
 	model.eval()
 
-	for inputIDs, inputMask, segmentIDs, exampleIndices, isImpossibles in tqdm(evalDataLoader, desc="Evaluating"):
+	precisions = list()
+	recalls = list()
+	F1s = list()
+	accuracies = list()
+	losses = list()
+
+	#precision = 0.0
+	#loss = 0.0
+	#recall = 0.0
+	#f1 = 0.0
+	#accuracy = 0.0
+
+	evalResFile = outputDir + "/{}_{}_evalResult.txt".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), evalBatchSize)
+#	for inputIDs, inputMask, segmentIDs, exampleIndices, isImpossibles in tqdm(evalDataLoader, desc="Evaluating"):
+	for step, batch in enumerate(evalDataLoader):
+		inputIDs, inputMask, segmentIDs, exampleIndices = batch
+
+		precision = 0.0
+		loss = 0.0
+		recall = 0.0
+		f1 = 0.0
+		accuracy = 0.0
 
 		inputIDs = inputIDs.to(device)
 		inputMask = inputMask.to(device)
 		segmentIDs = segmentIDs.to(device)
 		exampleIndices = exampleIndices.to(device)
-		isImpossibles = isImpossibles.to(device)
+#		isImpossibles = isImpossibles.to(device)
+
+		isImpBatch = []
+		for element in exampleIndices:
+			isImpBatch.append(evalFeatures[element.item()].isImpossible)
+		isImpossibles = torch.tensor(isImpBatch, device=device).float()
 
 		with torch.no_grad():
 			_, _, isImpossibleComputed = model(inputIDs, inputMask, segmentIDs)
 
-		isImpossibles = isImpossibles.view(-1, 1)
-		isImpossiblesNeg = 1 - isImpossibles
-		isImpossibles = torch.cat((isImpossiblesNeg, isImpossibles), dim=1).float()
+#		isImpossibles = isImpossibles.view(-1, 1)
+#		isImpossiblesNeg = 1 - isImpossibles
+#		isImpossibles = torch.cat((isImpossiblesNeg, isImpossibles), dim=1).float()
 
-		classWeights = torch.tensor([1., 2.])
-		weightedLossFun = BCELoss(weight=classWeights).cuda()
+#		classWeights = torch.tensor([1., 2.])
+#		weightedLossFun = BCELoss(weight=classWeights).cuda()
+		weightedLossFun = BCELoss()
 		loss = weightedLossFun(isImpossibleComputed, isImpossibles)
 
 		if nGPU > 1:
@@ -230,11 +264,32 @@ def main():
 		#optimizer.step()
 		optimizer.zero_grad()
 
-		precision = precision_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
-		recall = recall_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
-		f1 = f1_score(isImpossibles.detach().cpu(), isImpossibleComputed.detach().cpu() > 0.5, average="micro")
+#		print("ground truth: {} - type: {}".format(isImpossibles, isImpossibles.dtype))
+#		print("isImpossibleComputed: {} - type: {}".format(isImpossibleComputed, isImpossibleComputed.dtype))
+#		print("isImpossibleComputed > 0.5: {} - type: {}".format(isImpossibleComputed > 0.5, (isImpossibleComputed > 0.5).dtype))
 
-		tqdm.write("Loss: {}, Precision: {}, Recall: {}, F1: {}".format(loss, precision, recall, f1))
+		precision = precision_score(isImpossibles.detach().cpu(), (isImpossibleComputed.detach().cpu() > 0.5).float())
+		recall = recall_score(isImpossibles.detach().cpu(), (isImpossibleComputed.detach().cpu() > 0.5).float())
+		f1 = f1_score(isImpossibles.detach().cpu(), (isImpossibleComputed.detach().cpu() > 0.5).float())
+		accuracy = accuracy_score(isImpossibles.detach().cpu(), (isImpossibleComputed.detach().cpu() > 0.5).float())
+
+		losses.append(loss.item())
+		precisions.append(precision)
+		recalls.append(recall)
+		F1s.append(f1)
+		accuracies.append(accuracy)
+
+		print("Step: {} - Loss: {}, Precision: {}, Recall: {}, F1: {}, Accuracy: {}".format(step, loss, precision, recall, f1, accuracy))
+		with open(evalResFile, "a") as writer:
+			writer.write("Loss: {}, Precision: {}, Recall: {}, F1: {}, Accuracy: {}\n".format(loss, precision, recall, f1, accuracy))
+
+	print("Losses:\nSum: {}\n{}".format(sum(losses), losses))
+	print("Precisions:\nSum: {}\n{}".format(sum(precisions), precisions))
+	print("Recalls:\nSum: {}\n{}".format(sum(recalls), recalls))
+	print("F1s:\nSum: {}\n{}".format(sum(F1s), F1s))
+	print("Accuracies:\nSum: {}\n{}".format(sum(accuracies), accuracies))
+	with open(evalResFile, "a") as writer:
+		writer.write("\nMean Loss: {}, Mean Precision: {}, Mean Recall: {}, Mean F1: {}, Mean Accuracy: {}\n".format(sum(losses)/len(losses), sum(precisions)/len(precisions), sum(recalls)/len(recalls), sum(F1s)/len(F1s), sum(accuracies)/len(accuracies)))
 
 	"""
 	for l in deactivatedLayers:
@@ -249,7 +304,7 @@ def main():
 	# Training for the QA part of the network
 	for _ in trange(int(numTrainEpochs), desc="QA Epoch"):
 		for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for QA")):
-			if nGPU == 1:
+			if nGPU >= 1:
 				batch = tuple(t.to(device) for t in batch)
 
 			inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch

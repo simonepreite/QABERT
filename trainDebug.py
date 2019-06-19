@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+import os
 import pickle
 import torch
 import random
@@ -12,7 +14,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_sc
 from collections import namedtuple
 from tqdm import tqdm, trange
 import argparse
-from SQuADDataset import InputFeatures, readSQuADDataset, featurizeExamples, writePredictions
+from SQuADDataset import InputFeatures, readSQuADDataset, featurizeExamples, writePredictions, RawResult
 from utils import saveVocab
 from datetime import datetime
 
@@ -36,10 +38,10 @@ def main():
 	predictFile = args.predictFile
 	modelWeights = args.modelWeights
 	#doTraining = args.doTraining
-	doTraining = True
-	trainBatchSize = 256
+	doTraining = False
+	trainBatchSize = 16
 	evalBatchSize = 256
-	numTrainEpochs = 5 # these both are parameter that have to come from the commmand line
+	numTrainEpochs = 2 # these both are parameter that have to come from the commmand line
 
 	#if torch.cuda.is_available()
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -189,6 +191,7 @@ def main():
 	evalResFile = outputDir + "/{}_{}_evalResult.txt".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), evalBatchSize)
 #	for inputIDs, inputMask, segmentIDs, exampleIndices, isImpossibles in tqdm(evalDataLoader, desc="Evaluating"):
 	for step, batch in enumerate(evalDataLoader):
+		print("Executing batch {} of {}...".format(step+1, len(evalDataLoader)))
 		inputIDs, inputMask, segmentIDs, exampleIndices = batch
 
 		precision = 0.0
@@ -205,17 +208,19 @@ def main():
 			batchStartLogits, batchEndLogits = model(inputIDs, inputMask, segmentIDs)
 
 		for i, exampleIndex in enumerate(exampleIndices):
+#			print("Step {} - Preparing example {}...".format(step, i))
 			startLogits = batchStartLogits[i].detach().cpu().tolist()
 			endLogits = batchEndLogits[i].detach().cpu().tolist()
 			evalFeature = evalFeatures[exampleIndex.item()]
 			uniqueID = int(evalFeature.ID)
-			allResults.append({"unique_id": uniqueID, "start_logits": startLogits, "end_logits": endLogits})
+			allResults.append(RawResult(ID=uniqueID, startLogits=startLogits, endLogits=endLogits))
 
 	outputPredFile = os.path.join(outputDir, "predictions.json")
 	outputNBestFile = os.path.join(outputDir, "nbest_predictions.json")
 	outputNullLogOddsFile = os.path.join(outputDir, "null_odds.json")
 
-	writePredictions(evalExamples, evalFeatures, allResults, 20, 30, True, outputPredFile, outputNBestFile, outputNullLogOddsFile, usingV2=True, nullDiffThreshold=0.0)
+	print("Writing predictions...")
+	writePredictions(evalExamples, evalFeatures, allResults, 20, 30, True, outputPredFile, outputNBestFile, outputNullLogOddsFile, version_2_with_negative=True, null_score_diff_threshold=0.0)
 	"""
 	for l in deactivatedLayers:
 		for v in l.parameters():

@@ -428,8 +428,8 @@ def writePredictions(all_examples, all_features, all_results, n_best_size,
 				nbest.append(
 					NBestPrediction(
 						text="",
-						startLogit=null_startLogit,
-						endLogit=null_endLogit))
+						startLogit=null_start_logit,
+						endLogit=null_end_logit))
 				
 			# In very rare edge cases we could only have single null prediction.
 			# So we just create a nonce prediction in this case to avoid failure.

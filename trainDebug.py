@@ -22,26 +22,46 @@ from datetime import datetime
 def main():
 	parser = argparse.ArgumentParser()
 
+	# Required arguments
 	parser.add_argument("--outputDir", default=None, type=str, required=True, help="The output directory where the model checkpoints and predictions will be written.")
-	parser.add_argument("--trainFile", default=None, type=str, required=True)
-	parser.add_argument("--predictFile", default=None, type=str, required=True)
 	parser.add_argument("--vocabFile", default=None, type=str, required=True)
 	parser.add_argument("--modelWeights", default=None, type=str, required=True)
-	parser.add_argument("--doTraining", default=True, type=bool)
+
+	# Other arguments
+	parser.add_argument("--trainFile", default=None, type=str)
+	parser.add_argument("--predictFile", default=None, type=str)
+	parser.add_argument("--useTFCheckpoint", action="store_false")
+	parser.add_argument("--doTrain", action="store_false")
+	parser.add_argument("--doPredict", action="store_false")
+	parser.add_argument("--trainEpochs", default=1.0, type=float)
+	parser.add_argument("--trainBatchSize", default=12, type=int)
+	parser.add_argument("--predictBatchSize", default=8, type=int)
+	parser.add_argument("--paragraphStride", default=128, type=int)
+	parser.add_argument("--maxSeqLength", default=384, type=int)
+	parser.add_argument("--maxQueryLength", default=64, type=int)
+	parser.add_argument("--useVer2", action="store_true")
+	parser.add_argument("--learningRate", default=5e-5, type=float)
+	parser.add_argument("--nBestSize", default=20, type=int)
+	parser.add_argument("--maxAnswerLength", default=30, type=int)
+	parser.add_argument("--doLowercase", action="store_true")
 	args = parser.parse_args()
+
+	if not args.doTrain and not args.doPredict:
+		raise Exception("At least one between --doTrain and --doPredict must be True.")
 	
 	seed = 42
+	hiddenSize = 768
 	
-	outputDir = args.outputDir
-	vocabFile = args.vocabFile
-	trainFile = args.trainFile
-	predictFile = args.predictFile
-	modelWeights = args.modelWeights
-	#doTraining = args.doTraining
-	doTraining = False
-	trainBatchSize = 16
-	evalBatchSize = 256
-	numTrainEpochs = 2 # these both are parameter that have to come from the commmand line
+	# outputDir = args.outputDir
+	# vocabFile = args.vocabFile
+	# trainFile = args.trainFile
+	# predictFile = args.predictFile
+	# modelWeights = args.modelWeights
+	# #doTraining = args.doTraining
+	# doTraining = False
+	# trainBatchSize = 16
+	# evalBatchSize = 256
+	# numTrainEpochs = 2 # these both are parameter that have to come from the commmand line
 
 	#if torch.cuda.is_available()
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,14 +78,16 @@ def main():
 	if nGPU > 0:
 		torch.cuda.manual_seed_all(seed)
 	
-	tokenizer = BERTTokenizer(vocabFile)
-	trainExamples = readSQuADDataset(trainFile, True, squadV2=True)
-	numTrainOptimizationStep = len(trainExamples) // trainBatchSize * numTrainEpochs
+	tokenizer = BERTTokenizer(args.vocabFile, args.doLowercase)
+
+	if args.useTFCheckpoint:
+		convertedWeights = args.outputDir + "/ptWeights_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 	
-	model = QABERTDebug.loadPretrained(modelWeights, False, "", 768)
+	model = QABERTDebug.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize)
 #	model.to(device)
 	if nGPU > 1:
 		model = torch.nn.DataParallel(model)
+
 	model.to(device)
 	# no_decay = ['bias', 'NormLayer.bias', 'NormLayer.weight']
 	# optimizer_grouped_parameters = [
@@ -74,64 +96,65 @@ def main():
 	# 	]
 	
 	#TODO: optimizer has to be implemented
-	optimizer = Adam(model.parameters(), lr=3e-5)
+	optimizer = Adam(model.parameters(), lr=args.learningRate)
 	
 	print("Starting featurization...")
 	globalStep = 0
-	cachedTrainFeaturesFile = outputDir + "/trainFeatures.bin"
-	trainFeatures = None
-	try:
-		with open(cachedTrainFeaturesFile, "rb") as reader:
-			trainFeatures = pickle.load(reader)
-	except:
-		trainFeatures = featurizeExamples(trainExamples, tokenizer, 512, 128, 256, True) #to generalize paramenters
-		with open(cachedTrainFeaturesFile, "wb") as writer:
-			pickle.dump(trainFeatures, writer)
+
+	if args.doTrain:
+		trainExamples = readSQuADDataset(args.trainFile, True, squadV2=args.useVer2)
+		numTrainOptimizationStep = len(trainExamples) // args.trainBatchSize * args.trainEpochs
+
+		cachedTrainFeaturesFile = outputDir + "/trainFeatures_{}.bin".format("v2" if args.useVer2 else "v1.1")
+		trainFeatures = None
+		try:
+			with open(cachedTrainFeaturesFile, "rb") as reader:
+				trainFeatures = pickle.load(reader)
+		except:
+			trainFeatures = featurizeExamples(trainExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, True) #to generalize paramenters
+			with open(cachedTrainFeaturesFile, "wb") as writer:
+				pickle.dump(trainFeatures, writer)
+		
+		print("Starting train dataset creation...")
+		allInputIDs = torch.tensor([f.inputIDs for f in trainFeatures], dtype=torch.long)
+		allInputMask = torch.tensor([f.inputMask for f in trainFeatures], dtype=torch.long)
+		allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
+		allStartPos = torch.tensor([f.startPos for f in trainFeatures], dtype=torch.long)
+		allEndPos = torch.tensor([f.endPos for f in trainFeatures], dtype=torch.long)
+		allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
+		
+		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, 	allIsImpossible)
+		#trainSampler = DistributedSampler(trainData)
+		trainSampler = RandomSampler(trainData)
+		trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=args.trainBatchSize)
+
+	if args.doPredict:
+		print("Starting dev dataset creation...")
+		evalExamples = readSQuADDataset(args.predictFile, False, squadV2=args.useVer2)
 	
-	print("Starting tensor dataset creation...")
-	allInputIDs = torch.tensor([f.inputIDs for f in trainFeatures], dtype=torch.long)
-	allInputMask = torch.tensor([f.inputMask for f in trainFeatures], dtype=torch.long)
-	allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
-	allStartPos = torch.tensor([f.startPos for f in trainFeatures], dtype=torch.long)
-	allEndPos = torch.tensor([f.endPos for f in trainFeatures], dtype=torch.long)
-	allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
+		cachedEvalFeaturesFile = outputDir + "/evalFeatures_{}.bin".format("v2" if args.useVer2 else "v1.1")
+		evalFeatures = None
+		try:
+			with open(cachedEvalFeaturesFile, "rb") as reader:
+				evalFeatures = pickle.load(reader)
+		except:
+			evalFeatures = featurizeExamples(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False) #to generalize paramenters
+			with open(cachedEvalFeaturesFile, "wb") as writer:
+				pickle.dump(evalFeatures, writer)
 	
-	trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
-	#trainSampler = DistributedSampler(trainData)
-	trainSampler = RandomSampler(trainData)
-	trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=trainBatchSize)
+		allInputIDs = torch.tensor([f.inputIDs for f in evalFeatures], dtype=torch.long)
+		allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
+		allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
+		allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
+#		allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
+		evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
+	
+		evalSampler = SequentialSampler(evalData)
+		evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=evalBatchSize)
 
-	print("Starting dev dataset creation...")
-	evalExamples = readSQuADDataset(predictFile, False, squadV2=True)
-	print(evalExamples[0].isImpossible)
-	print(evalExamples[5].isImpossible)
-#	evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False)
+	if args.doTrain:
+		noFineTuningLayers = [model.module.bert] if nGPU > 1 else [model.bert]
 
-	cachedEvalFeaturesFile = outputDir + "/evalFeatures.bin"
-	evalFeatures = None
-	try:
-		with open(cachedEvalFeaturesFile, "rb") as reader:
-			evalFeatures = pickle.load(reader)
-	except:
-		evalFeatures = featurizeExamples(evalExamples, tokenizer, 512, 128, 256, False) #to generalize paramenters
-		with open(cachedEvalFeaturesFile, "wb") as writer:
-			pickle.dump(evalFeatures, writer)
-
-	allInputIDs = torch.tensor([f.inputIDs for f in evalFeatures], dtype=torch.long)
-	allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
-	allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
-	allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
-#	allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
-	evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
-
-	evalSampler = SequentialSampler(evalData)
-	evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=evalBatchSize)
-
-	if doTraining:
-		if nGPU > 1:
-			deactivatedLayers = [model.module.bert]
-		else:
-			deactivatedLayers = [model.bert]
 		for l in deactivatedLayers:
 			for v in l.parameters():
 				v.requires_grad = False
@@ -141,13 +164,13 @@ def main():
 		model.train()
 	
 		print("Start training for qaOutputs part")
-		for epoch in trange(int(numTrainEpochs), desc="Epoch"):
+		for epoch in trange(int(args.trainEpochs), desc="Epoch"):
 			for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration")):
 				if nGPU >= 1:
 					batch = tuple(t.to(device) for t in batch)
 
 				inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
-				startLogits, endLogits = model(inputIDs, inputMask, segmentIDs)
+				startLogits, endLogits = model(inputIDs, segmentIDs, inputMask)
 
 				if len(startPositions.size()) > 1:
 					startPositions = startPositions.squeeze(-1)
@@ -180,7 +203,7 @@ def main():
 		torch.save(modelToSave.state_dict(), outputModelFile)
 
 		print("Loading finetuned model...")
-		model = QABERTDebug.loadPretrained(outputModelFile, False, outputModelFile, 768)
+		model = QABERTDebug.loadPretrained(outputModelFile, False, "", hiddenSize)
 
 	print("Predicting...")
 
@@ -188,7 +211,7 @@ def main():
 	model.eval()
 
 	allResults = []
-	evalResFile = outputDir + "/{}_{}_evalResult.txt".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), evalBatchSize)
+	# evalResFile = args.outputDir + "/{}_{}_evalResult.txt".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), args.predictBatchSize)
 #	for inputIDs, inputMask, segmentIDs, exampleIndices, isImpossibles in tqdm(evalDataLoader, desc="Evaluating"):
 	for step, batch in enumerate(evalDataLoader):
 		print("Executing batch {} of {}...".format(step+1, len(evalDataLoader)))
@@ -205,7 +228,7 @@ def main():
 		segmentIDs = segmentIDs.to(device)
 
 		with torch.no_grad():
-			batchStartLogits, batchEndLogits = model(inputIDs, inputMask, segmentIDs)
+			batchStartLogits, batchEndLogits = model(inputIDs, segmentIDs, inputMask)
 
 		for i, exampleIndex in enumerate(exampleIndices):
 #			print("Step {} - Preparing example {}...".format(step, i))
@@ -215,12 +238,12 @@ def main():
 			uniqueID = int(evalFeature.ID)
 			allResults.append(RawResult(ID=uniqueID, startLogits=startLogits, endLogits=endLogits))
 
-	outputPredFile = os.path.join(outputDir, "predictions.json")
-	outputNBestFile = os.path.join(outputDir, "nbest_predictions.json")
-	outputNullLogOddsFile = os.path.join(outputDir, "null_odds.json")
+	outputPredFile = os.path.join(args.outputDir, "predictions.json")
+	outputNBestFile = os.path.join(args.outputDir, "nbest_predictions.json")
+	outputNullLogOddsFile = os.path.join(args.outputDir, "null_odds.json")
 
 	print("Writing predictions...")
-	writePredictions(evalExamples, evalFeatures, allResults, 20, 30, True, outputPredFile, outputNBestFile, outputNullLogOddsFile, version_2_with_negative=True, null_score_diff_threshold=0.0)
+	writePredictions(evalExamples, evalFeatures, allResults, args.nBestSize, args.maxAnswerLength, args.doLowercase, outputPredFile, outputNBestFile, outputNullLogOddsFile, version_2_with_negative=args.useVer2, null_score_diff_threshold=0.0)
 	"""
 	for l in deactivatedLayers:
 		for v in l.parameters():

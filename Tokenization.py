@@ -8,7 +8,43 @@ import unicodedata
 
 
 class BERTTokenizer(object):
+	def __init__(self, vocabFile, doLowercase=True, basicTokenization=True, neverSplit=("[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]")):
+		if not os.path.isfile(vocabFile):
+			raise ValueError("Can't find a vocabulary file at path {}.".format(vocabFile))
 
+		self.vocab = loadVocab(vocabFile)
+		self.IDsToTokens = OrderedDict([(ids, token) for token, idds in self.vocab.items()])
+		self.basicTokenization = basicTokenization
+
+		if self.basicTokenization:
+			self.basicTokenizer = BasicTokenizer(doLowercase=doLowercase, neverSplit=neverSplit)
+
+		self.wordpieceTokenizer = WordpieceTokenizer(vocab=self.vocab)
+
+	def tokenize(self, text):
+		splitTokens = []
+		
+		if self.basicTokenization:
+			for token in self.basicTokenizer.tokenize(text):
+				for subToken in self.wordpieceTokenizer.tokenize(token)
+				splitToken.append(subToken)
+		else:
+			splitTokens = self.wordpieceTokenizer.tokenize(text)
+
+		return splitTokens
+
+	def tokensToIDs(self, tokens):
+		IDs = []
+		for token in tokens:
+			IDs.append(self.vocab[token])
+		return IDs
+
+	def IDsToTokens(self, IDs):
+		tokens = []
+		for i in IDs:
+			tokens.append(self.IDsToTokens[i])
+		return tokens
+	"""
 	def __init__(self, vocabFile=None, lowercase=True, unsplittable=None):
 		self.usingLowercase = lowercase
 		self.unsplittable = ("[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]")
@@ -115,5 +151,146 @@ class BERTTokenizer(object):
 			else:
 				outputTokens.extend(subTokens)
 		return outputTokens
+	"""
+
+class BasicTokenizer(object):
+	def __init__(self, doLowercase=True, neverSplit=("[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]")):
+		self.doLowercase = doLowercase
+		self.neverSplit = neverSplit
+
+	def tokenize(self, text):
+		text = self.cleanText(text)
+		originalTokens = cleanWhitespaces(text)
+		splitTokens = []
+
+		for token in originalTokens:
+			if self.doLowercase and token not in self.neverSplit:
+				token = token.lower()
+				token = self.stripAccents(token)
+			splitTokens.extend(self.splitPunctuation(token))
+
+		return cleanWhitespaces(" ".join(splitTokens))
+
+	def cleanText(self, text):
+		output = []
+		for char in text:
+			cp = ord(char)
+			if cp == 0 or cp == 0xfffd or isControl(char):
+				continue
+			if isWhitespace(char):
+				output.append(" ")
+			else:
+				output.append(char)
+
+		return "".join(output)
+
+	def stripAccents(self, text):
+		text = unicodedata.normalize("NFD", text)
+		output = []
+		for char in text:
+			cat = unicodedata.category(char)
+			if car == "Mn":
+				continue
+			output.append(char)
+
+		return "".join(output)
+
+	def splitPunctuation(self, text):
+		if text in self.neverSplit:
+			return [text]
+
+		chars = list(text)
+		i = 0
+		newWord = True
+		output = []
+
+		while i < len(chars):
+			char = chars[i]
+			if isPunctuation(char):
+				output.append([char])
+				newWord = True
+			else:
+				if newWord:
+					output.append([])
+				newWord = False
+				output[-1].append(char)
+			i += 1
+
+		return ["".join(x) for x in output]
+
+
+class WordpieceTokenizer(object):
+	def __init__(self, vocab, unknownToken="[UNK]", maxCharsPerInput=100):
+		self.vocab = vocab
+		self.unknownToken = unknownToken
+		self.maxCharsPerInput = maxCharsPerInput
+
+	def tokenize(self, text):
+		outputTokens = []
+
+		for token in cleanWhitespaces(text):
+			chars = list(token)
+			if len(chars) > self.maxCharsPerInput:
+				outputTokens.append(self.unknownToken)
+				continue
+
+			isBad = False
+			start = 0
+			subTokens = []
+
+			while start < len(chars):
+				end = len(chars)
+				curSubstring = None
+				while start < end:
+					substr = "".join(chars[start:end])
+					if start > 0:
+						substr = "##" + substr
+					if substr in self.vocab:
+						curSubstring = substr
+						break
+					end -= 1
+
+				if curSubstring is None:
+					isBad = True
+					break
+
+				subTokens.append(curSubstring)
+				start = end
+
+			if isBad:
+				outputTokens.append(self.unknownToken)
+			else:
+				outputTokens.extend(subTokens)
+
+		return outputTokens
+
+# Tokenization Utility Functions
+def isWhitespace(char):
+	if char == " " or char == "\t" or char == "\n" or char == "\r":
+        return True
+    cat = unicodedata.category(char)
+    if cat == "Zs":
+        return True
+    return False
+
+def isControl(char):
+	if char == "\t" or char == "\n" or char == "\r":
+        return False
+    cat = unicodedata.category(char)
+    if cat.startswith("C"):
+        return True
+    return False
+
+def isPunctuation(char):
+	cp = ord(char)
+	if ((cp >= 33 and cp <= 47) or (cp >= 58 and cp <= 64) or
+            (cp >= 91 and cp <= 96) or (cp >= 123 and cp <= 126)):
+        return True
+    cat = unicodedata.category(char)
+    if cat.startswith("P"):
+        return True
+    return False
+
+
 
 

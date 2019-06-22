@@ -267,29 +267,29 @@ class WordpieceTokenizer(object):
 # Tokenization Utility Functions
 def isWhitespace(char):
 	if char == " " or char == "\t" or char == "\n" or char == "\r":
-        return True
-    cat = unicodedata.category(char)
-    if cat == "Zs":
-        return True
-    return False
+		return True
+	cat = unicodedata.category(char)
+	if cat == "Zs":
+		return True
+	return False
 
 def isControl(char):
 	if char == "\t" or char == "\n" or char == "\r":
-        return False
-    cat = unicodedata.category(char)
-    if cat.startswith("C"):
-        return True
-    return False
+		return False
+	cat = unicodedata.category(char)
+	if cat.startswith("C"):
+		return True
+	return False
 
 def isPunctuation(char):
 	cp = ord(char)
 	if ((cp >= 33 and cp <= 47) or (cp >= 58 and cp <= 64) or
-            (cp >= 91 and cp <= 96) or (cp >= 123 and cp <= 126)):
-        return True
-    cat = unicodedata.category(char)
-    if cat.startswith("P"):
-        return True
-    return False
+			(cp >= 91 and cp <= 96) or (cp >= 123 and cp <= 126)):
+		return True
+	cat = unicodedata.category(char)
+	if cat.startswith("P"):
+		return True
+	return False
 
 
 

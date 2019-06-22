@@ -8,16 +8,16 @@ import unicodedata
 
 def loadVocab(vocabFilepath):
 	vocab = collections.OrderedDict()
-    index = 0
-    with open(vocabFilepath, "r", encoding="utf-8") as reader:
-        while True:
-            token = reader.readline()
-            if not token:
-                break
-            token = token.strip()
-            vocab[token] = index
-            index += 1
-    return vocab
+	index = 0
+	with open(vocabFilepath, "r", encoding="utf-8") as reader:
+		while True:
+			token = reader.readline()
+			if not token:
+				break
+			token = token.strip()
+			vocab[token] = index
+			index += 1
+	return vocab
 	"""
 	vocab = OrderedDict()
 	with open(vocabFilepath, "r", encoding="utf-8") as file:
@@ -41,10 +41,10 @@ def saveVocab(content, vocabFilepath):
 
 def cleanWhitespaces(text):
 	text = text.strip()
-    if not text:
-        return []
-    tokens = text.split()
-    return tokens
+	if not text:
+		return []
+	tokens = text.split()
+	return tokens
 	"""
 	text = text.strip()
 	return text.split() if text else []

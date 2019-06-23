@@ -30,9 +30,9 @@ def main():
 	# Other arguments
 	parser.add_argument("--trainFile", default=None, type=str)
 	parser.add_argument("--predictFile", default=None, type=str)
-	parser.add_argument("--useTFCheckpoint", action="store_false")
-	parser.add_argument("--doTrain", action="store_false")
-	parser.add_argument("--doPredict", action="store_false")
+	parser.add_argument("--useTFCheckpoint", action="store_true")
+	parser.add_argument("--doTrain", action="store_true")
+	parser.add_argument("--doPredict", action="store_true")
 	parser.add_argument("--trainEpochs", default=1.0, type=float)
 	parser.add_argument("--trainBatchSize", default=12, type=int)
 	parser.add_argument("--predictBatchSize", default=8, type=int)
@@ -46,7 +46,7 @@ def main():
 	parser.add_argument("--doLowercase", action="store_true")
 	args = parser.parse_args()
 
-	if not args.doTrain and not args.doPredict:
+	if (not args.doTrain) and (not args.doPredict):
 		raise Exception("At least one between --doTrain and --doPredict must be True.")
 	
 	seed = 42
@@ -80,6 +80,7 @@ def main():
 	
 	tokenizer = BERTTokenizer(args.vocabFile, args.doLowercase)
 
+	convertedWeights = ""
 	if args.useTFCheckpoint:
 		convertedWeights = args.outputDir + "/ptWeights_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 	
@@ -105,7 +106,7 @@ def main():
 		trainExamples = readSQuADDataset(args.trainFile, True, squadV2=args.useVer2)
 		numTrainOptimizationStep = len(trainExamples) // args.trainBatchSize * args.trainEpochs
 
-		cachedTrainFeaturesFile = outputDir + "/trainFeatures_{}.bin".format("v2" if args.useVer2 else "v1.1")
+		cachedTrainFeaturesFile = args.outputDir + "/trainFeatures_{}.bin".format("v2" if args.useVer2 else "v1.1")
 		trainFeatures = None
 		try:
 			with open(cachedTrainFeaturesFile, "rb") as reader:
@@ -132,7 +133,7 @@ def main():
 		print("Starting dev dataset creation...")
 		evalExamples = readSQuADDataset(args.predictFile, False, squadV2=args.useVer2)
 	
-		cachedEvalFeaturesFile = outputDir + "/evalFeatures_{}.bin".format("v2" if args.useVer2 else "v1.1")
+		cachedEvalFeaturesFile = args.outputDir + "/evalFeatures_{}.bin".format("v2" if args.useVer2 else "v1.1")
 		evalFeatures = None
 		try:
 			with open(cachedEvalFeaturesFile, "rb") as reader:
@@ -150,12 +151,12 @@ def main():
 		evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
 	
 		evalSampler = SequentialSampler(evalData)
-		evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=evalBatchSize)
+		evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=args.predictBatchSize)
 
 	if args.doTrain:
 		noFineTuningLayers = [model.module.bert] if nGPU > 1 else [model.bert]
 
-		for l in deactivatedLayers:
+		for l in noFineTuningLayers:
 			for v in l.parameters():
 				v.requires_grad = False
 
@@ -199,7 +200,7 @@ def main():
 		modelToSave = model.module if hasattr(model, "module") else model
 
 		print("Saving model...")
-		outputModelFile = outputDir + "/{}_{}_QABERTDebugTrained.bin".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), trainBatchSize)
+		outputModelFile = args.outputDir + "/{}_{}_QABERTDebugTrained.bin".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), args.trainBatchSize)
 		torch.save(modelToSave.state_dict(), outputModelFile)
 
 		print("Loading finetuned model...")

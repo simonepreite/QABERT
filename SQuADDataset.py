@@ -3,20 +3,20 @@ import math
 import os
 from io import open
 from pprint import pprint
-from Tokenization import BERTTokenizer
+from Tokenization import BERTTokenizer, BasicTokenizer
 from collections import namedtuple, defaultdict, OrderedDict
-from utils import stripSpacesForRebuild
+from utils import stripSpacesForRebuild, cleanWhitespaces
 
 
 InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
 SQuADExample = namedtuple("SQuADExample", ["parWords", "questionAnswerID", "questionText", "startPos", "endPos", "answerText", "isImpossible"])
-docSpan = namedtuple("docSpan", ["start", "length"])
+DocSpan = namedtuple("DocSpan", ["start", "length"])
 IntermediatePred = namedtuple("IntermediatePred", ["featureIndex", "startIndex", "endIndex", "startLogit", "endLogit"])
 NBestPrediction = namedtuple("NBestPrediction", ["text", "startLogit", "endLogit"])
 RawResult = namedtuple("RawResult", ["ID", "startLogits", "endLogits"])
 
 def whiteSpaceCheck(char):
-	if char == " " or char == "\t" or char == "\n" or ord(char) == 0x202F:
+	if char == " " or char == "\t" or char == "\r" or char == "\n" or ord(char) == 0x202F:
 		return True
 	return False
 
@@ -34,11 +34,12 @@ def fillWordList(text, wordList, wordOffset):
 			prevWhiteSpace = False 
 		wordOffset.append(len(wordList) - 1)
 
-def answerElements(questionAnswer, wordOffset, squadV2):
+def answerElements(questionAnswer, wordList, wordOffset, squadV2):
 	isImpossible = False
 	startP = -1
 	endP = -1
 	answerTextOrig = ""
+	skip = False
 	if squadV2:
 		isImpossible = questionAnswer["is_impossible"]
 	if not isImpossible:
@@ -47,7 +48,13 @@ def answerElements(questionAnswer, wordOffset, squadV2):
 		answerOffset = answer["answer_start"]
 		startP = wordOffset[answerOffset]
 		endP = wordOffset[answerOffset + len(answerTextOrig) - 1]
-	return startP, endP, answerTextOrig, isImpossible
+
+		actualText = " ".join(wordList[startP:(endP + 1)])
+		cleanedAnswer = " ".join(cleanWhitespaces(answerTextOrig))
+		if actualText.find(cleanedAnswer) == -1:
+			skip = True
+
+	return startP, endP, answerTextOrig, isImpossible, skip
 		
 def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 	
@@ -60,6 +67,7 @@ def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 			wordList = []
 			wordOffset = []
 			fillWordList(par, wordList, wordOffset)
+
 			for questionAnswer in par["qas"]:
 				questionAnswerID = questionAnswer["id"]
 				questionText = questionAnswer["question"]
@@ -68,25 +76,50 @@ def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 				answerText = None
 				isImpossible = False
 #				if trainingMode:
-				startP, endP, answerText, isImpossible = answerElements(questionAnswer, wordOffset, squadV2)
+				startP, endP, answerText, isImpossible, skip = answerElements(questionAnswer, wordList, wordOffset, squadV2)
 
-				sample = SQuADExample(parWords=wordList, questionAnswerID=questionAnswerID, questionText=questionText, startPos=startP, endPos=endP, answerText=answerText, isImpossible=isImpossible)
-				squadExamples.append(sample)
+				if not skip:
+					sample = SQuADExample(parWords=wordList, questionAnswerID=questionAnswerID, questionText=questionText, startPos=startP, endPos=endP, answerText=answerText, isImpossible=isImpossible)
+					squadExamples.append(sample)
 	return squadExamples
 
 def getBestIndexes(logits, nBestSize):
 	indexAndScore = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)
 	bestIndexes = []
+	"""
 	i = 0
 	while i < len(indexAndScore) and i < nBestSize:
 		bestIndexes.append(indexAndScore[i][0])
 		i += 1
+	"""
+	for i in range(len(indexAndScore)):
+		if i >= nBestSize:
+			break
+		bestIndexes.append(indexAndScore[i][0])
 	return bestIndexes
 		
 def computeSoftmax(scores):
 	if not scores:
 		return []
-	
+
+	maxScore = None
+	for score in scores:
+		if maxScore is None or score > maxScore:
+			maxScore = score
+
+	expScores = []
+	totalSum = 0.0
+	for score in scores:
+		x = math.exp(score - maxScore)
+		expScores.append(x)
+		totalSum += x
+
+	probs = []
+	for score in expScores:
+		probs.append(score / totalSum)
+
+	return probs
+	"""
 	maxScore = max(scores)
 	expScores = []
 	probs = []
@@ -100,6 +133,7 @@ def computeSoftmax(scores):
 	for score in expScores:
 		probs.append(score / totSum)
 	return probs
+	"""
 	
 
 
@@ -136,17 +170,17 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 					tokEndPos = firstWordpieceTokenIndex[example.endPos + 1] -1
 				else:
 					tokEndPos = len(wordpieceParagraph) - 1
-				(tokStartPos, tokEndPos) = improveAnswerExtent(wordpieceParagraph, tokStartPos, tokEndPos, tokenizer, example.questionText)
+				(tokStartPos, tokEndPos) = improveAnswerExtent(wordpieceParagraph, tokStartPos, tokEndPos, tokenizer, example.answerText)
 		
-		maxTockensForChunks = maxSeqLength - len(queryTokens) - 3
+		maxTokensForChunks = maxSeqLength - len(queryTokens) - 3
 		
 		parChunks = [] #doc_spans
 		startOffset = 0
 		while startOffset < len(wordpieceParagraph):
 			length = len(wordpieceParagraph) - 	startOffset
-			if length > maxTockensForChunks:
-				length = maxTockensForChunks
-			parChunks.append(docSpan(start=startOffset, length=length))
+			if length > maxTokensForChunks:
+				length = maxTokensForChunks
+			parChunks.append(DocSpan(start=startOffset, length=length))
 			if startOffset + length == len(wordpieceParagraph):
 				break
 			startOffset += min(length, docStride)
@@ -180,7 +214,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 			tokens.append("[SEP]")
 			segmentIDs.append(1)
 
-			bertInputIDs = tokenizer.convertToIDs(tokens)
+			bertInputIDs = tokenizer.tokensToIDs(tokens)
 			bertInputMask = [1] * len(bertInputIDs)
 
 			#Padding remaining positions
@@ -203,7 +237,6 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 				else:
 					chunkStart = parChunk.start
 					chunkEnd = parChunk.start + parChunk.length - 1
-					toBeThrown = False
 					if not (tokStartPos >= chunkStart and tokEndPos <= chunkEnd):
 						startPosition = 0
 						endPosition = 0
@@ -260,8 +293,8 @@ def isMostRelevantParagraphChunk(chunks, curChunkIndex, pos):
 
 
 def rebuildOriginalText(predictedText, originalText, usingLowercase):
-	tokenizer = BERTTokenizer(lowercase=usingLowercase)
-	tokenizedText = " ".join(tokenizer.basicTokenization(originalText))
+	tokenizer = BasicTokenizer(doLowercase=usingLowercase)
+	tokenizedText = " ".join(tokenizer.tokenize(originalText))
 
 	startPos = tokenizedText.find(predictedText)
 	if startPos == -1:

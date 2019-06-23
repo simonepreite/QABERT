@@ -48,11 +48,11 @@ class BERTModel(BERTInitializer):
 		self.numAttentionHeads = numAttentionHeads
 		self.maxPosEmbedding = 512
 		self.vocabSize = vocabSize
-
-		self.apply(self.weightsInitialization)
 		
 		self.embeddings = BERTEmbeddings(self.hiddenSize, self.vocabSize, self.maxPosEmbedding)
 		self.encoder = nn.ModuleList(Encoder(hiddenSize, numAttentionHeads) for _ in range(numLayers))
+		
+		self.apply(self.weightsInitialization)
 		
 		
 	def forward(self, inputIDs, sequenceIDs, attentionMask=None):

@@ -160,6 +160,7 @@ class BasicTokenizer(object):
 
 	def tokenize(self, text):
 		text = self.cleanText(text)
+		text = self.handleChinese(text)
 		originalTokens = cleanWhitespaces(text)
 		splitTokens = []
 
@@ -217,6 +218,25 @@ class BasicTokenizer(object):
 			i += 1
 
 		return ["".join(x) for x in output]
+
+	def handleChinese(self, text):
+		output = []
+		for char in text:
+			cp = ord(char)
+			if self.isChinese(cp):
+				output.append(" ")
+				output.append(char)
+				output.append(" ")
+			else:
+				output.append(char)
+
+		return "".join(output)
+
+	def isChinese(self, cp):
+		if ((cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF) or (cp >= 0x20000 and cp <= 0x2A6DF) or (cp >= 0x2A700 and cp <= 0x2B73F) or (cp >= 0x2B740 and cp <= 0x2B81F) or (cp >= 0x2B820 and cp <= 0x2CEAF) or (cp >= 0xF900 and cp <= 0xFAFF) or (cp >= 0x2F800 and cp <= 0x2FA1F)):
+			return True
+
+		return False
 
 
 class WordpieceTokenizer(object):

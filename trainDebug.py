@@ -77,6 +77,7 @@ def main():
 
 	random.seed(seed)
 	np.random.seed(seed)
+	torch.manual_seed(seed)
 	if nGPU > 0:
 		torch.cuda.manual_seed_all(seed)
 	
@@ -87,11 +88,12 @@ def main():
 		convertedWeights = args.outputDir + "/ptWeights_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 	
 	model = QABERTDebug.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize)
-#	model.to(device)
+
+	model.to(device)
+
 	if nGPU > 1:
 		model = torch.nn.DataParallel(model)
 
-	model.to(device)
 	# no_decay = ['bias', 'NormLayer.bias', 'NormLayer.weight']
 	# optimizer_grouped_parameters = [
 	# 	{'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
@@ -119,7 +121,7 @@ def main():
 				trainFeatures = pickle.load(reader)
 		except:
 			print("Building train features...")
-			trainFeatures = featurizeExamples(trainExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, True) #to generalize paramenters
+			trainFeatures = featurizeExamples(trainExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, True)
 			with open(cachedTrainFeaturesFile, "wb") as writer:
 				pickle.dump(trainFeatures, writer)
 
@@ -172,11 +174,11 @@ def main():
 		evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=args.predictBatchSize)
 
 	if args.doTrain:
-		noFineTuningLayers = [model.module.bert] if nGPU > 1 else [model.bert]
+		# noFineTuningLayers = [model.module.bert] if nGPU > 1 else [model.bert]
 
-		for l in noFineTuningLayers:
-			for v in l.parameters():
-				v.requires_grad = False
+		# for l in noFineTuningLayers:
+		# 	for v in l.parameters():
+		# 		v.requires_grad = False
 
 
 		print("Training...")

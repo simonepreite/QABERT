@@ -1,4 +1,5 @@
 import torch
+import copy
 from torch import nn
 from NormLayer import NormLayer
 from utils import loadModuleParameters
@@ -50,16 +51,14 @@ class BERTModel(BERTInitializer):
 		self.vocabSize = vocabSize
 		
 		self.embeddings = BERTEmbeddings(self.hiddenSize, self.vocabSize, self.maxPosEmbedding)
-		self.encoder = nn.ModuleList(Encoder(hiddenSize, numAttentionHeads) for _ in range(numLayers))
+
+		encoder = Encoder(hiddenSize, numAttentionHeads)
+		self.encoder = nn.ModuleList([copy.deepcopy(encoder) for _ in range(numLayers)])
 		
 		self.apply(self.weightsInitialization)
 		
 		
 	def forward(self, inputIDs, sequenceIDs, attentionMask=None):
-#		print("BERTModel forward")
-		#x = torch.FloatTensor([[[ 0.9059, -0.7039, -0.3376,  0.1968],[-1.0413,  0.8128,  0.0697, -0.6166],[-0.3793, -0.9851, -2.3841, -0.7003],[ 0.6076, -1.4874, -0.1079,  0.4266]]])
-
-		#inputIDs = torch.randn(1, 4)
 		if attentionMask is None:
 			attentionMask = torch.ones_like(inputIDs)
 		extendedAttentionMask = attentionMask.unsqueeze(1).unsqueeze(2)
@@ -67,12 +66,16 @@ class BERTModel(BERTInitializer):
 		extendedAttentionMask = (1.0 - extendedAttentionMask) * -10000.0
 		
 		embeddingOutput = self.embeddings(inputIDs, sequenceIDs)
-#		print("embedding output shape:", embeddingOutput.size())
-		encodedLayers = embeddingOutput
-		for layer in self.encoder:
-			encodedLayers = layer(encodedLayers, extendedAttentionMask)
-#		print("last encoded layer shape:", encodedLayers.size())
-		return encodedLayers
+		encodedLayers = []
+
+		for i, layer in enumerate(self.encoder):
+			if i == 0:
+				hiddenStates = layer(embeddingOutput, extendedAttentionMask)
+			else:
+				hiddenStates = layer(hiddenStates, extendedAttentionMask)
+			encodedLayers.append(hiddenStates)
+
+		return encodedLayers[-1]
 
 
 class QABERTDebug(BERTInitializer):

@@ -23,9 +23,12 @@ class MultiHeadAttention(nn.Module):
 		self.outputLinear = nn.Linear(hiddenSize, hiddenSize)
 
 	def prepareForScores(self, input):
-		batchSize = input.size(0)
-		input = input.view(batchSize, -1, self.numAttentionHeads, self.attentionHeadSize)
-		return input.transpose(1, 2)
+		newShape = input.size()[:-1] + (self.numAttentionHeads, self.attentionHeadSize)
+		input = input.view(*newShape)
+		return x.permute(0, 2, 1, 3)
+		# batchSize = input.size(0)
+		# input = input.view(batchSize, -1, self.numAttentionHeads, self.attentionHeadSize)
+		# return input.transpose(1, 2)
 
 	def forward(self, hiddenStates, attentionMask):
 		projQ = self.queriesLinear(hiddenStates)
@@ -38,9 +41,12 @@ class MultiHeadAttention(nn.Module):
 
 		attentionScores = self.sdp(queries, keys, values, attentionMask)
 
-		batchSize = queries.size(0)
-		attentionScores = attentionScores.transpose(1, 2).contiguous()
-		attentionScores = attentionScores.view(batchSize, -1, self.numAttentionHeads * self.attentionHeadSize)
+		attentionScores = attentionScores.permute(0, 2, 1, 3).contiguous()
+		newShape = attentionScores.size()[:-2] + (self.numAttentionHeads * self.attentionHeadSize,)
+		attentionScores = attentionScores.view(*newShape)
+		# batchSize = queries.size(0)
+		# attentionScores = attentionScores.transpose(1, 2).contiguous()
+		# attentionScores = attentionScores.view(batchSize, -1, self.numAttentionHeads * self.attentionHeadSize)
 
 		return self.outputLinear(attentionScores)
 

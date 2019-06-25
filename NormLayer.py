@@ -28,6 +28,6 @@ class NormLayer(nn.Module):
 		mu = input.mean(-1, keepdim=True)
 		stdArg = (input - mu).pow(2).mean(-1, keepdim=True) + self.epsilon
 		std = torch.sqrt(stdArg)
-		normInput = (input - mu) / std
-		return self.weight * normInput + self.bias
+		input = (input - mu) / std
+		return self.weight * input + self.bias
 

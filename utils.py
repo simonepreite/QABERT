@@ -7,7 +7,7 @@ import os
 import unicodedata
 
 def loadVocab(vocabFilepath):
-	vocab = collections.OrderedDict()
+	vocab = OrderedDict()
 	index = 0
 	with open(vocabFilepath, "r", encoding="utf-8") as reader:
 		while True:

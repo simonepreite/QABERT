@@ -25,13 +25,13 @@ def fillWordList(text, wordList, wordOffset):
 	prevWhiteSpace = True
 	for char in context:
 		if whiteSpaceCheck(char):
-			prevWhiteSpace = True 
+			prevWhiteSpace = True
 		else:
 			if prevWhiteSpace:
 				wordList.append(char)
 			else:
 				wordList[-1] += char
-			prevWhiteSpace = False 
+			prevWhiteSpace = False
 		wordOffset.append(len(wordList) - 1)
 
 def answerElements(questionAnswer, wordList, wordOffset, squadV2):
@@ -55,12 +55,12 @@ def answerElements(questionAnswer, wordList, wordOffset, squadV2):
 			skip = True
 
 	return startP, endP, answerTextOrig, isImpossible, skip
-		
+
 def readSQuADDataset(inputFile, trainingMode, squadV2=True):
-	
+
 	with open(inputFile, "r", encoding='utf-8') as SQuAD:
 		squadData = json.load(SQuAD)["data"]
-		
+
 	squadExamples = []
 	for data in squadData:
 		for par in data["paragraphs"]:
@@ -75,8 +75,9 @@ def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 				endP = None
 				answerText = None
 				isImpossible = False
-#				if trainingMode:
-				startP, endP, answerText, isImpossible, skip = answerElements(questionAnswer, wordList, wordOffset, squadV2)
+				skip = False
+				if trainingMode:
+					startP, endP, answerText, isImpossible, skip = answerElements(questionAnswer, wordList, wordOffset, squadV2)
 
 				if not skip:
 					sample = SQuADExample(parWords=wordList, questionAnswerID=questionAnswerID, questionText=questionText, startPos=startP, endPos=endP, answerText=answerText, isImpossible=isImpossible)

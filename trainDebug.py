@@ -17,6 +17,7 @@ import argparse
 from SQuADDataset import InputFeatures, readSQuADDataset, featurizeExamples, writePredictions, RawResult
 from utils import saveVocab
 from datetime import datetime
+import json
 
 
 def main():
@@ -28,6 +29,7 @@ def main():
 	parser.add_argument("--modelWeights", default=None, type=str, required=True)
 
 	# Other arguments
+	parser.add_argument("--debugOutputDir", default=None, type=str)
 	parser.add_argument("--trainFile", default=None, type=str)
 	parser.add_argument("--predictFile", default=None, type=str)
 	parser.add_argument("--useTFCheckpoint", action="store_true")
@@ -104,6 +106,10 @@ def main():
 
 	if args.doTrain:
 		trainExamples = readSQuADDataset(args.trainFile, True, squadV2=args.useVer2)
+		
+		with open(args.debugOutputDir + "/trainExamplesDebug.json", "w") as file:
+			print(json.dumps([t._asdict() for t in trainExamples], indent=2), file=file)
+
 		numTrainOptimizationStep = len(trainExamples) // args.trainBatchSize * args.trainEpochs
 
 		cachedTrainFeaturesFile = args.outputDir + "/trainFeatures_{}.bin".format("v2" if args.useVer2 else "v1.1")
@@ -112,19 +118,24 @@ def main():
 			with open(cachedTrainFeaturesFile, "rb") as reader:
 				trainFeatures = pickle.load(reader)
 		except:
+			print("Building train features...")
 			trainFeatures = featurizeExamples(trainExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, True) #to generalize paramenters
 			with open(cachedTrainFeaturesFile, "wb") as writer:
 				pickle.dump(trainFeatures, writer)
-		
+
+		with open(args.debugOutputDir + "/trainFeaturesDebug.json", "w") as file:
+			print(json.dumps([t._asdict() for t in trainFeatures]), file=file)
+
 		print("Starting train dataset creation...")
 		allInputIDs = torch.tensor([f.inputIDs for f in trainFeatures], dtype=torch.long)
 		allInputMask = torch.tensor([f.inputMask for f in trainFeatures], dtype=torch.long)
 		allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
 		allStartPos = torch.tensor([f.startPos for f in trainFeatures], dtype=torch.long)
 		allEndPos = torch.tensor([f.endPos for f in trainFeatures], dtype=torch.long)
-		allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
-		
-		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, 	allIsImpossible)
+		#allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
+
+		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos)
+#		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
 		#trainSampler = DistributedSampler(trainData)
 		trainSampler = RandomSampler(trainData)
 		trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=args.trainBatchSize)
@@ -132,24 +143,31 @@ def main():
 	if args.doPredict:
 		print("Starting dev dataset creation...")
 		evalExamples = readSQuADDataset(args.predictFile, False, squadV2=args.useVer2)
-	
+
+		with open(args.debugOutputDir + "/evalExamplesDebug.json", "w") as file:
+			print(json.dumps([t._asdict() for t in evalExamples], indent=2), file=file)
+
 		cachedEvalFeaturesFile = args.outputDir + "/evalFeatures_{}.bin".format("v2" if args.useVer2 else "v1.1")
 		evalFeatures = None
 		try:
 			with open(cachedEvalFeaturesFile, "rb") as reader:
 				evalFeatures = pickle.load(reader)
 		except:
+			print("Building eval features...")
 			evalFeatures = featurizeExamples(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False) #to generalize paramenters
 			with open(cachedEvalFeaturesFile, "wb") as writer:
 				pickle.dump(evalFeatures, writer)
-	
+
+		with open(args.debugOutputDir + "/evalFeaturesDebug.json", "w") as file:
+			print(json.dumps([t._asdict() for t in evalFeatures], indent=2), file=file)
+
 		allInputIDs = torch.tensor([f.inputIDs for f in evalFeatures], dtype=torch.long)
 		allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
 		allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
 		allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
 #		allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
 		evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
-	
+
 		evalSampler = SequentialSampler(evalData)
 		evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=args.predictBatchSize)
 
@@ -163,14 +181,15 @@ def main():
 
 		print("Training...")
 		model.train()
-	
+
 		print("Start training for qaOutputs part")
 		for epoch in trange(int(args.trainEpochs), desc="Epoch"):
 			for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration")):
 				if nGPU >= 1:
 					batch = tuple(t.to(device) for t in batch)
 
-				inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
+#				inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
+				inputIDs, inputMask, segmentIDs, startPositions, endPositions = batch
 				startLogits, endLogits = model(inputIDs, segmentIDs, inputMask)
 
 				if len(startPositions.size()) > 1:
@@ -214,8 +233,11 @@ def main():
 	allResults = []
 	# evalResFile = args.outputDir + "/{}_{}_evalResult.txt".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), args.predictBatchSize)
 #	for inputIDs, inputMask, segmentIDs, exampleIndices, isImpossibles in tqdm(evalDataLoader, desc="Evaluating"):
-	for step, batch in enumerate(evalDataLoader):
-		print("Executing batch {} of {}...".format(step+1, len(evalDataLoader)))
+	for step, batch in enumerate(tqdm(evalDataLoader, desc="Batches")):
+		#print("Executing batch {} of {}...".format(step+1, len(evalDataLoader)))
+#		if nGPU >= 1:
+#			batch = tuple(t.to(device) for t in batch)
+
 		inputIDs, inputMask, segmentIDs, exampleIndices = batch
 
 		precision = 0.0
@@ -242,6 +264,9 @@ def main():
 	outputPredFile = os.path.join(args.outputDir, "predictions.json")
 	outputNBestFile = os.path.join(args.outputDir, "nbest_predictions.json")
 	outputNullLogOddsFile = os.path.join(args.outputDir, "null_odds.json")
+
+	with open(args.debugOutputDir + "/allResults.txt", "w") as file:
+		print(allResults, file=file)
 
 	print("Writing predictions...")
 	writePredictions(evalExamples, evalFeatures, allResults, args.nBestSize, args.maxAnswerLength, args.doLowercase, outputPredFile, outputNBestFile, outputNullLogOddsFile, version_2_with_negative=args.useVer2, null_score_diff_threshold=0.0)

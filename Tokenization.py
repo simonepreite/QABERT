@@ -13,7 +13,7 @@ class BERTTokenizer(object):
 			raise ValueError("Can't find a vocabulary file at path {}.".format(vocabFile))
 
 		self.vocab = loadVocab(vocabFile)
-		self.IDsToTokens = OrderedDict([(ids, token) for token, idds in self.vocab.items()])
+		self.IDsToTokens = OrderedDict([(ids, token) for token, ids in self.vocab.items()])
 		self.basicTokenization = basicTokenization
 
 		if self.basicTokenization:
@@ -26,8 +26,8 @@ class BERTTokenizer(object):
 		
 		if self.basicTokenization:
 			for token in self.basicTokenizer.tokenize(text):
-				for subToken in self.wordpieceTokenizer.tokenize(token)
-				splitToken.append(subToken)
+				for subToken in self.wordpieceTokenizer.tokenize(token):
+					splitTokens.append(subToken)
 		else:
 			splitTokens = self.wordpieceTokenizer.tokenize(text)
 
@@ -190,7 +190,7 @@ class BasicTokenizer(object):
 		output = []
 		for char in text:
 			cat = unicodedata.category(char)
-			if car == "Mn":
+			if cat == "Mn":
 				continue
 			output.append(char)
 

@@ -25,7 +25,7 @@ class MultiHeadAttention(nn.Module):
 	def prepareForScores(self, input):
 		newShape = input.size()[:-1] + (self.numAttentionHeads, self.attentionHeadSize)
 		input = input.view(*newShape)
-		return x.permute(0, 2, 1, 3)
+		return input.permute(0, 2, 1, 3)
 		# batchSize = input.size(0)
 		# input = input.view(batchSize, -1, self.numAttentionHeads, self.attentionHeadSize)
 		# return input.transpose(1, 2)

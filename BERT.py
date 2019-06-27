@@ -103,32 +103,32 @@ class QABERT(BERTInitializer):
 		super(QABERT, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
-		self.apply(self.weightsInitialization)
 		self.midIsImpossibleLinear = nn.Linear(hiddenSize, 256)
-		self.isImpossibleOutput = nn.Linear(512*256, 1) #TODO: 512 sequence length, da parametrizzare
+		self.isImpossibleOutput = nn.Linear(384*256, 1) #TODO: 512 sequence length, da parametrizzare
 		self.qaLinear1 = nn.Linear(hiddenSize + 256, hiddenSize + 256)
 		self.qaLinear2 = nn.Linear(hiddenSize + 256, 64)
 		self.qaOutput = nn.Linear(64, 2)
 		self.relu = nn.ReLU()
 		self.sigmoid = nn.Sigmoid()
 		self.qaSoftmax = nn.Softmax(dim=2)
+		self.apply(self.weightsInitialization)
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask, startPositions=None, endPositions=None):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
-#		print("self.bert layer output shape: {}".format(bertOutput.size()))
+		print("self.bert layer output shape: {}".format(bertOutput.size()))
 
 		midIsImpOutput = self.relu(self.midIsImpossibleLinear(bertOutput))
-#		print("self.midIsImpossibleLinear layer: {} - output shape: {}".format(self.midIsImpossibleLinear, midIsImpOutput.size()))
+		print("self.midIsImpossibleLinear layer: {} - output shape: {}".format(self.midIsImpossibleLinear, midIsImpOutput.size()))
 
 		batchSize = midIsImpOutput.size()[0] # should be batch size
-#		print("Batch size:", batchSize)
+		print("Batch size:", batchSize)
 
 		midIsImpOutputFlattened = midIsImpOutput.view(batchSize, 1, -1)
-#		print("midIsImpOutputFlattened shape:", midIsImpOutputFlattened.size())
+		print("midIsImpOutputFlattened shape:", midIsImpOutputFlattened.size())
 
 		isImpOutput = self.isImpossibleOutput(midIsImpOutputFlattened)
 		isImpOutput = self.sigmoid(isImpOutput.squeeze())
-#		print("self.isImpossibleOutput later: {} - output shape: {}".format(self.isImpossibleOutput, isImpOutput.size()))
+		print("self.isImpossibleOutput later: {} - output shape: {}".format(self.isImpossibleOutput, isImpOutput.size()))
 
 		
 

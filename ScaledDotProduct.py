@@ -9,7 +9,7 @@ class ScaledDotProduct(nn.Module):
 		self.dropout = nn.Dropout(dropOutProb)
 		
 	def forward(self, Q, K, V, attentionMask):
-		aScores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.attentionHeadSize)
+		aScores = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(self.attentionHeadSize)
 		aScores = aScores + attentionMask
 		aProbs = self.dropout(nn.Softmax(dim=-1)(aScores))
 		return torch.matmul(aProbs, V)

@@ -8,25 +8,49 @@ import unicodedata
 
 def loadVocab(vocabFilepath):
 	vocab = OrderedDict()
+	index = 0
+	with open(vocabFilepath, "r", encoding="utf-8") as reader:
+		while True:
+			token = reader.readline()
+			if not token:
+				break
+			token = token.strip()
+			vocab[token] = index
+			index += 1
+	return vocab
+	"""
+	vocab = OrderedDict()
 	with open(vocabFilepath, "r", encoding="utf-8") as file:
 		lines = file.readlines()
 		for (index, token) in enumerate(lines):
 			token = token.strip()
 			vocab[token] = index
 	return vocab
+	"""
 
 def saveVocab(content, vocabFilepath):
+	i = 0
 	if os.path.isdir(vocabFilepath):
 		vocab = os.path.join(vocabFilepath, "vocab.txt")
 	with open(vocab, "w", encoding="utf-8") as file:
 		for token, index in sorted(content.items(), key=lambda x: x[1]):
+			if i != index:
+				i = index
 			file.write(token + u'\n')
 	return vocab
 
 def cleanWhitespaces(text):
 	text = text.strip()
+	if not text:
+		return []
+	tokens = text.split()
+	return tokens
+	"""
+	text = text.strip()
 	return text.split() if text else []
+	"""
 
+### MOVED
 def cleanAccents(token):
 	normalizedToken = unicodedata.normalize("NFD", token)
 	output = []
@@ -36,6 +60,7 @@ def cleanAccents(token):
 		output.append(char)
 	return "".join(output)
 
+### MOVED
 def splitPunctuation(token):
 	chars = list(token)
 	newWord = True
@@ -64,6 +89,7 @@ def stripSpacesForRebuild(text):
 	buildText = "".join(chars)
 	return (buildText, charMap)
 
+### NOT USED
 def loadModuleParameters(module, prefix, meta, **kwargs):
 	stateDict = kwargs.get("state_dict", None)
 	kwargs.pop("state_dict", None)

@@ -80,10 +80,10 @@ class BERTModel(BERTInitializer):
 
 class QABERT2LGELU(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
-		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		super(QABERT2LGELU, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
-		self.middleoutput1 = nn.Linear(768, 384)
+		self.middleOutput = nn.Linear(768, 384)
 		self.qaOutputs = nn.Linear(384, 2)
 		self.activationFun = GELU()
 		self.dropout = nn.Dropout(dropout)
@@ -91,7 +91,7 @@ class QABERT2LGELU(BERTInitializer):
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
-		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
+		middleOutput1 = self.dropout(self.activationFun(self.middleOutput(bertOutput)))
 		logits = self.qaOutputs(middleOutput1)
 
 		startLogits, endLogits = logits.split(1, dim=-1)
@@ -102,10 +102,10 @@ class QABERT2LGELU(BERTInitializer):
 
 class QABERT2LTanh(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
-		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		super(QABERT2LTanh, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
-		self.middleoutput1 = nn.Linear(768, 384)
+		self.middleOutput = nn.Linear(768, 384)
 		self.qaOutputs = nn.Linear(384, 2)
 		self.activationFun = nn.Tanh()
 		self.dropout = nn.Dropout(dropout)
@@ -113,7 +113,7 @@ class QABERT2LTanh(BERTInitializer):
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
-		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
+		middleOutput1 = self.dropout(self.activationFun(self.middleOutput(bertOutput)))
 		logits = self.qaOutputs(middleOutput1)
 
 		startLogits, endLogits = logits.split(1, dim=-1)
@@ -125,12 +125,12 @@ class QABERT2LTanh(BERTInitializer):
 
 class QABERT4L400Tanh(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
-		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		super(QABERT4L400Tanh, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
-		self.middleoutput1 = nn.Linear(768, 400)
-		self.middleoutput2 = nn.Linear(400, 150)
-		self.middleoutput3 = nn.Linear(150, 32)
+		self.middleOutput1 = nn.Linear(768, 400)
+		self.middleOutput2 = nn.Linear(400, 150)
+		self.middleOutput3 = nn.Linear(150, 32)
 		self.qaOutputs = nn.Linear(32, 2)
 		self.activationFun = nn.Tanh()
 		self.dropout = nn.Dropout(dropout)
@@ -138,8 +138,8 @@ class QABERT4L400Tanh(BERTInitializer):
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
-		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
-		middleOutput2 = self.dropout(self.activationFun(self.middleoutput2(middleOutput1)))
+		middleOutput1 = self.dropout(self.activationFun(self.middleOutput1(bertOutput)))
+		middleOutput2 = self.dropout(self.activationFun(self.middleOutput2(middleOutput1)))
 		middleOutput3 = self.dropout(self.activationFun(self.middleOutput3(middleOutput2)))
 		logits = self.qaOutputs(middleOutput3)
 
@@ -151,12 +151,12 @@ class QABERT4L400Tanh(BERTInitializer):
 
 class QABERT4L1024Tanh(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
-		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		super(QABERT4L1024Tanh, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
-		self.middleoutput1 = nn.Linear(768, 1024)
-		self.middleoutput2 = nn.Linear(1024, 200)
-		self.middleoutput3 = nn.Linear(200, 64)
+		self.middleOutput1 = nn.Linear(768, 1024)
+		self.middleOutput2 = nn.Linear(1024, 200)
+		self.middleOutput3 = nn.Linear(200, 64)
 		self.qaOutputs = nn.Linear(64, 2)
 		self.activationFun = nn.Tanh()
 		self.dropout = nn.Dropout(dropout)
@@ -164,8 +164,8 @@ class QABERT4L1024Tanh(BERTInitializer):
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
-		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
-		middleOutput2 = self.dropout(self.activationFun(self.middleoutput2(middleOutput1)))
+		middleOutput1 = self.dropout(self.activationFun(self.middleOutput1(bertOutput)))
+		middleOutput2 = self.dropout(self.activationFun(self.middleOutput2(middleOutput1)))
 		middleOutput3 = self.dropout(self.activationFun(self.middleOutput3(middleOutput2)))
 		logits = self.qaOutputs(middleOutput3)
 
@@ -177,12 +177,12 @@ class QABERT4L1024Tanh(BERTInitializer):
 
 class QABERT4LReLU(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
-		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		super(QABERT4LReLU, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
-		self.middleoutput1 = nn.Linear(768, 1024)
-		self.middleoutput2 = nn.Linear(1024, 200)
-		self.middleoutput3 = nn.Linear(200, 64)
+		self.middleOutput1 = nn.Linear(768, 1024)
+		self.middleOutput2 = nn.Linear(1024, 200)
+		self.middleOutput3 = nn.Linear(200, 64)
 		self.qaOutputs = nn.Linear(64, 2)
 		self.activationFun = nn.ReLU()
 		self.dropout = nn.Dropout(dropout)
@@ -190,8 +190,8 @@ class QABERT4LReLU(BERTInitializer):
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
-		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
-		middleOutput2 = self.dropout(self.activationFun(self.middleoutput2(middleOutput1)))
+		middleOutput1 = self.dropout(self.activationFun(self.middleOutput1(bertOutput)))
+		middleOutput2 = self.dropout(self.activationFun(self.middleOutput2(middleOutput1)))
 		middleOutput3 = self.dropout(self.activationFun(self.middleOutput3(middleOutput2)))
 		logits = self.qaOutputs(middleOutput3)
 
@@ -203,7 +203,7 @@ class QABERT4LReLU(BERTInitializer):
 
 class QABERTVanilla(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
-		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		super(QABERTVanilla, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 		self.qaOutputs = nn.Linear(hiddenSize, 2)
@@ -223,7 +223,7 @@ class QABERTVanilla(BERTInitializer):
 
 class QABERTFail(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
-		super(QABERT, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		super(QABERTFail, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 		self.midIsImpossibleLinear = nn.Linear(hiddenSize, 256)

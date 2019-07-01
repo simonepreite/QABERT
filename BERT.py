@@ -6,6 +6,7 @@ from utils import loadModuleParameters
 from Embeddings import BERTEmbeddings
 from Encoder import Encoder
 from convertWeights import convertTensorFlowWeights
+from GELU import GELU
 
 
 class BERTInitializer(nn.Module):
@@ -77,8 +78,130 @@ class BERTModel(BERTInitializer):
 
 		return encodedLayers[-1]
 
+class QABERT2LGELU(BERTInitializer):
+	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
+		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
-class QABERTDebug(BERTInitializer):
+		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		self.middleoutput1 = nn.Linear(768, 384)
+		self.qaOutputs = nn.Linear(384, 2)
+		self.activationFun = GELU()
+		self.dropout = nn.Dropout(dropout)
+		self.apply(self.weightsInitialization)
+
+	def forward(self, inputIDs, sequenceIDs, attentionMask):
+		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
+		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
+		logits = self.qaOutputs(middleOutput1)
+
+		startLogits, endLogits = logits.split(1, dim=-1)
+		startLogits = startLogits.squeeze(-1)
+		endLogits = endLogits.squeeze(-1)
+
+		return startLogits, endLogits
+
+class QABERT2LTanh(BERTInitializer):
+	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
+		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+
+		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		self.middleoutput1 = nn.Linear(768, 384)
+		self.qaOutputs = nn.Linear(384, 2)
+		self.activationFun = nn.Tanh()
+		self.dropout = nn.Dropout(dropout)
+		self.apply(self.weightsInitialization)
+
+	def forward(self, inputIDs, sequenceIDs, attentionMask):
+		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
+		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
+		logits = self.qaOutputs(middleOutput1)
+
+		startLogits, endLogits = logits.split(1, dim=-1)
+		startLogits = startLogits.squeeze(-1)
+		endLogits = endLogits.squeeze(-1)
+
+		return startLogits, endLogits
+
+
+class QABERT4L400Tanh(BERTInitializer):
+	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
+		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+
+		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		self.middleoutput1 = nn.Linear(768, 400)
+		self.middleoutput2 = nn.Linear(400, 150)
+		self.middleoutput3 = nn.Linear(150, 32)
+		self.qaOutputs = nn.Linear(32, 2)
+		self.activationFun = nn.Tanh()
+		self.dropout = nn.Dropout(dropout)
+		self.apply(self.weightsInitialization)
+
+	def forward(self, inputIDs, sequenceIDs, attentionMask):
+		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
+		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
+		middleOutput2 = self.dropout(self.activationFun(self.middleoutput2(middleOutput1)))
+		middleOutput3 = self.dropout(self.activationFun(self.middleOutput3(middleOutput2)))
+		logits = self.qaOutputs(middleOutput3)
+
+		startLogits, endLogits = logits.split(1, dim=-1)
+		startLogits = startLogits.squeeze(-1)
+		endLogits = endLogits.squeeze(-1)
+
+		return startLogits, endLogits
+
+class QABERT4L1024Tanh(BERTInitializer):
+	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
+		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+
+		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		self.middleoutput1 = nn.Linear(768, 1024)
+		self.middleoutput2 = nn.Linear(1024, 200)
+		self.middleoutput3 = nn.Linear(200, 64)
+		self.qaOutputs = nn.Linear(64, 2)
+		self.activationFun = nn.Tanh()
+		self.dropout = nn.Dropout(dropout)
+		self.apply(self.weightsInitialization)
+
+	def forward(self, inputIDs, sequenceIDs, attentionMask):
+		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
+		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
+		middleOutput2 = self.dropout(self.activationFun(self.middleoutput2(middleOutput1)))
+		middleOutput3 = self.dropout(self.activationFun(self.middleOutput3(middleOutput2)))
+		logits = self.qaOutputs(middleOutput3)
+
+		startLogits, endLogits = logits.split(1, dim=-1)
+		startLogits = startLogits.squeeze(-1)
+		endLogits = endLogits.squeeze(-1)
+
+		return startLogits, endLogits
+
+class QABERT4LReLU(BERTInitializer):
+	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
+		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+
+		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		self.middleoutput1 = nn.Linear(768, 1024)
+		self.middleoutput2 = nn.Linear(1024, 200)
+		self.middleoutput3 = nn.Linear(200, 64)
+		self.qaOutputs = nn.Linear(64, 2)
+		self.activationFun = nn.ReLU()
+		self.dropout = nn.Dropout(dropout)
+		self.apply(self.weightsInitialization)
+
+	def forward(self, inputIDs, sequenceIDs, attentionMask):
+		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
+		middleOutput1 = self.dropout(self.activationFun(self.middleoutput1(bertOutput)))
+		middleOutput2 = self.dropout(self.activationFun(self.middleoutput2(middleOutput1)))
+		middleOutput3 = self.dropout(self.activationFun(self.middleOutput3(middleOutput2)))
+		logits = self.qaOutputs(middleOutput3)
+
+		startLogits, endLogits = logits.split(1, dim=-1)
+		startLogits = startLogits.squeeze(-1)
+		endLogits = endLogits.squeeze(-1)
+
+		return startLogits, endLogits
+
+class QABERTVanilla(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
 		super(QABERTDebug, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
@@ -98,7 +221,7 @@ class QABERTDebug(BERTInitializer):
 
 
 
-class QABERT(BERTInitializer):
+class QABERTFail(BERTInitializer):
 	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1):
 		super(QABERT, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
@@ -143,23 +266,6 @@ class QABERT(BERTInitializer):
 		endLogits = endLogits.squeeze(-1)
 
 		return startLogits, endLogits, isImpOutput
-"""
-		if startPositions is not None and endPositions is not None:
-			if len(startPositions.size()) > 1:
-				startPositions = startPositions.squeeze(-1)
-			if len(endPositions.size()) > 1:
-				endPositions = endPositions.squeeze(-1)
-
-			ignoredIndex = startLogits.size(1)
-			startPositions.clamp_(0, ignoredIndex)
-			endPositions.clamp_(0, ignoredIndex)
-
-			lossFunction = CrossEntropyLoss(ignore_index=ignoredIndex)
-			startLoss = lossFunction(startLogits, startPositions)
-			endLoss = lossFunction(endLogits, endPositions)
-			return (startLoss + endLoss) / 2
-		else:
-"""
 
 
 

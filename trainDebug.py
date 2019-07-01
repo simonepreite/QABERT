@@ -7,18 +7,14 @@ import random
 import numpy as np
 from BERT import QABERT
 from Tokenization import BERTTokenizer
-from torch.nn import BCELoss, CrossEntropyLoss
+from torch.nn import CrossEntropyLoss
 from torch.optim import Adam
-from torch.utils.data import (DataLoader, SequentialSampler, TensorDataset, DistributedSampler, RandomSampler)
-from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+from torch.utils.data import DataLoader, SequentialSampler, TensorDataset, RandomSampler
 from collections import namedtuple
 from tqdm import tqdm, trange
 import argparse
-from SQuADDataset import InputFeatures, readSQuADDataset, featurizeExamples, writePredictions, RawResult
-from utils import saveVocab
-from datetime import datetime
+from SQuADDataset import readSQuADDataset, featurizeExamples, writePredictions, RawResult
 import json
-import os
 
 
 def main():
@@ -47,6 +43,8 @@ def main():
 	parser.add_argument("--nBestSize", default=20, type=int)
 	parser.add_argument("--maxAnswerLength", default=30, type=int)
 	parser.add_argument("--doLowercase", action="store_true")
+	parser.add_argument("--trainDevFile", default=None, type=str)
+	parser.add_argument("--bertTrainable", action="store_true")
 	args = parser.parse_args()
 
 	if (not args.doTrain) and (not args.doPredict):
@@ -54,27 +52,9 @@ def main():
 	
 	seed = 42
 	hiddenSize = 768
-	
-	# outputDir = args.outputDir
-	# vocabFile = args.vocabFile
-	# trainFile = args.trainFile
-	# predictFile = args.predictFile
-	# modelWeights = args.modelWeights
-	# #doTraining = args.doTraining
-	# doTraining = False
-	# trainBatchSize = 16
-	# evalBatchSize = 256
-	# numTrainEpochs = 2 # these both are parameter that have to come from the commmand line
 
-	#if torch.cuda.is_available()
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	nGPU = torch.cuda.device_count()
-	
-#	torch.cuda.set_device(0)
-#	device = torch.device("cuda", 0)
-#	nGPU = 1
-	# Initializes the distributed backend which will take care of sychronizing nodes/GPUs
-#	torch.distributed.init_process_group(backend='nccl', rank=0, world_size=2)
 
 	random.seed(seed)
 	np.random.seed(seed)
@@ -95,28 +75,24 @@ def main():
 	if nGPU > 1:
 		model = torch.nn.DataParallel(model)
 
-	# no_decay = ['bias', 'NormLayer.bias', 'NormLayer.weight']
-	# optimizer_grouped_parameters = [
-	# 	{'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
-	# 	{'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-	# 	]
-	
 	#TODO: optimizer has to be implemented
 	optimizer = Adam(model.parameters(), lr=args.learningRate)
-	
+
 	print("Starting featurization...")
 	globalStep = 0
 
 	if args.doTrain:
 		trainExamples = readSQuADDataset(args.trainFile, True, squadV2=args.useVer2)
-		
+
 		if args.debugOutputDir:
 			with open(args.debugOutputDir + "/trainExamplesDebug.json", "w") as file:
 				print(json.dumps([t._asdict() for t in trainExamples], indent=2), file=file)
 
+		# TODO: to be implemented
 		numTrainOptimizationStep = len(trainExamples) // args.trainBatchSize * args.trainEpochs
 
 		cachedTrainFeaturesFile = args.outputDir + "/trainFeatures_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
+
 		trainFeatures = None
 		try:
 			with open(cachedTrainFeaturesFile, "rb") as reader:
@@ -126,10 +102,11 @@ def main():
 			trainFeatures = featurizeExamples(trainExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, True)
 			with open(cachedTrainFeaturesFile, "wb") as writer:
 				pickle.dump(trainFeatures, writer)
-		
+
 		if args.debugOutputDir:
 			with open(args.debugOutputDir + "/trainFeaturesDebug.json", "w") as file:
 				print(json.dumps([t._asdict() for t in trainFeatures]), file=file)
+
 
 		print("Starting train dataset creation...")
 		allInputIDs = torch.tensor([f.inputIDs for f in trainFeatures], dtype=torch.long)
@@ -137,13 +114,46 @@ def main():
 		allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
 		allStartPos = torch.tensor([f.startPos for f in trainFeatures], dtype=torch.long)
 		allEndPos = torch.tensor([f.endPos for f in trainFeatures], dtype=torch.long)
-		allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
+		#allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
 
-		#trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos)
-		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
-		#trainSampler = DistributedSampler(trainData)
+		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos)
+#		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
+		
 		trainSampler = RandomSampler(trainData)
 		trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=args.trainBatchSize)
+
+		print("Starting train-dev dataset creation...")
+		trainDevExamples = readSQuADDataset(args.trainDevFile, False, squadV2=args.useVer2)
+
+		if args.debugOutputDir:
+			with open(args.debugOutputDir + "/trainDevExamplesDebug.json", "w") as file:
+				print(json.dumps([t._asdict() for t in trainDevExamples], indent=2), file=file)
+
+		cachedTrainDevFeaturesFile = args.outputDir + "/trainDevFeatures_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
+
+		trainDevFeatures = None
+		try:
+			with open(cachedTrainDevFeaturesFile, "rb") as reader:
+				trainDevFeatures = pickle.load(reader)
+		except:
+			print("Building train-dev features...")
+			trainDevFeatures = featurizeExamples(trainDevExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False)
+			with open(cachedTrainDevFeaturesFile, "wb") as writer:
+				pickle.dump(trainDevFeatures, writer)
+
+		if args.debugOutputDir:
+			with open(args.debugOutputDir + "/trainDevFeaturesDebug.json", "w") as file:
+				print(json.dumps([t._asdict() for t in trainDevFeatures], indent=2), file=file)
+
+		allInputIDsTD = torch.tensor([f.inputIDs for f in trainDevFeatures], dtype=torch.long)
+		allInputMaskTD = torch.tensor([f.inputMask for f in trainDevFeatures], dtype=torch.long)
+		allSegmentIDsTD = torch.tensor([f.segmentIDs for f in trainDevFeatures], dtype=torch.long)
+		allExampleIndexTD = torch.arange(allInputIDsTD.size(0), dtype=torch.long)
+#		allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
+		trainDevData = TensorDataset(allInputIDsTD, allInputMaskTD, allSegmentIDsTD, allExampleIndexTD)
+
+		trainDevSampler = SequentialSampler(trainDevData)
+		trainDevDataLoader = DataLoader(trainDevData, sampler=trainDevSampler, batch_size=args.predictBatchSize)
 
 	if args.doPredict:
 		print("Starting dev dataset creation...")
@@ -154,16 +164,17 @@ def main():
 				print(json.dumps([t._asdict() for t in evalExamples], indent=2), file=file)
 
 		cachedEvalFeaturesFile = args.outputDir + "/evalFeatures_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
+
 		evalFeatures = None
 		try:
 			with open(cachedEvalFeaturesFile, "rb") as reader:
 				evalFeatures = pickle.load(reader)
 		except:
 			print("Building eval features...")
-			evalFeatures = featurizeExamples(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False) #to generalize paramenters
+			evalFeatures = featurizeExamples(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False)
 			with open(cachedEvalFeaturesFile, "wb") as writer:
 				pickle.dump(evalFeatures, writer)
-		
+
 		if args.debugOutputDir:
 			with open(args.debugOutputDir + "/evalFeaturesDebug.json", "w") as file:
 				print(json.dumps([t._asdict() for t in evalFeatures], indent=2), file=file)
@@ -179,91 +190,83 @@ def main():
 		evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=args.predictBatchSize)
 
 	if args.doTrain:
-		# noFineTuningLayers = [model.module.bert] if nGPU > 1 else [model.bert]
+		if not args.bertTrainable:
+			noFineTuningLayers = [model.module.bert] if nGPU > 1 else [model.bert]
 
-		# for l in noFineTuningLayers:
-		# 	for v in l.parameters():
-		# 		v.requires_grad = False
+			for l in noFineTuningLayers:
+				for v in l.parameters():
+					v.requires_grad = False
 
 
 		print("Training...")
 		model.train()
 
-		print("Start training for qaOutputs isImpossible part")
 		for epoch in trange(int(args.trainEpochs), desc="Epoch"):
+			epochLosses = []
 			for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration")):
 				if nGPU >= 1:
 					batch = tuple(t.to(device) for t in batch)
 
-				inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
-				_, _,isImpossibleComputed = model(inputIDs, segmentIDs, inputMask)
-				# #inputIDs, inputMask, segmentIDs, startPositions, endPositions = batch
-				# startLogits, endLogits = model(inputIDs, segmentIDs, inputMask)
-				# 
-				# if len(startPositions.size()) > 1:
-				# 	startPositions = startPositions.squeeze(-1)
-				# if len(endPositions.size()) > 1:
-				# 	endPositions = endPositions.squeeze(-1)
-				# 
-				# ignoredIndex = startLogits.size(1)
-				# startPositions.clamp_(0, ignoredIndex)
-				# endPositions.clamp_(0, ignoredIndex)
-				# 
-				# lossFun = CrossEntropyLoss(ignore_index=ignoredIndex)
-				# startLoss = lossFun(startLogits, startPositions)
-				# endLoss = lossFun(endLogits, endPositions)
-				# loss = (startLoss + endLoss) / 2
-				# 
-				
-				weightedLossFun = BCELoss().cuda()
-				loss = weightedLossFun(isImpossibleComputed, isImpossibles)
+#				inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
+				inputIDs, inputMask, segmentIDs, startPositions, endPositions = batch
+				startLogits, endLogits = model(inputIDs, segmentIDs, inputMask)
+
+				if len(startPositions.size()) > 1:
+					startPositions = startPositions.squeeze(-1)
+				if len(endPositions.size()) > 1:
+					endPositions = endPositions.squeeze(-1)
+
+				ignoredIndex = startLogits.size(1)
+				startPositions.clamp_(0, ignoredIndex)
+				endPositions.clamp_(0, ignoredIndex)
+
+				lossFun = CrossEntropyLoss(ignore_index=ignoredIndex)
+				startLoss = lossFun(startLogits, startPositions)
+				endLoss = lossFun(endLogits, endPositions)
+				loss = (startLoss + endLoss) / 2
 
 				if nGPU > 1:
 					loss = loss.mean()
-				
-				appendW = "w+"
-				if os.path.exists(args.debugOutputDir + "/lossTraceIsImpossible.txt"):
-					appendW = "a"
-				
-				with open(args.debugOutputDir + "/lossTraceIsImpossible.txt", appendW) as file:
-					print(loss, file=file)
-				
+
 				loss.backward()
-				
+
+				epochLosses.append(loss.item())
+
+				arg = "a"
+				if epoch == 0 and step == 0:
+					arg = "w"
+				with open(args.outputDir + "/losstrace.txt", arg) as file:
+					print(loss.item(), file=file)
+
 				optimizer.step()
 				optimizer.zero_grad()
 				globalStep += 1
 
-
+			arg = "a"
+			if epoch == 0:
+				arg = "w"
+			with open(args.outputDir + "/lossEpochsTrace.txt", arg) as file:
+				print(torch.mean(torch.tensor(epochLosses)).item(), file=file)
+		
 		modelToSave = model.module if hasattr(model, "module") else model
 
 		print("Saving model...")
-		outputModelFile = args.outputDir + "/QABERTTrained_{}_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, args.trainBatchSize)
+		outputModelFile = args.outputDir + "/QABERTTrained_{}_{}_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, args.trainBatchSize, args.trainEpochs)
 		torch.save(modelToSave.state_dict(), outputModelFile)
 
 		print("Loading finetuned model...")
 		model = QABERT.loadPretrained(outputModelFile, False, "", hiddenSize)
 
-	print("Predicting...")
 
-	model.to(device)
-	model.eval()
+	if args.doPredict:
+		print("Predicting...")
+		model.to(device)
+		model.eval()
 
-	allResults = []
-	# evalResFile = args.outputDir + "/{}_{}_evalResult.txt".format(datetime.now().strftime("%Y-%m-%d_%H-%M"), args.predictBatchSize)
-#	for inputIDs, inputMask, segmentIDs, exampleIndices, isImpossibles in tqdm(evalDataLoader, desc="Evaluating"):
-	for step, batch in enumerate(tqdm(evalDataLoader, desc="Batches")):
-		#print("Executing batch {} of {}...".format(step+1, len(evalDataLoader)))
-#		if nGPU >= 1:
-#			batch = tuple(t.to(device) for t in batch)
+		allResults = []
+		for step, batch in enumerate(tqdm(evalDataLoader, desc="Batches")):
 
 		inputIDs, inputMask, segmentIDs, exampleIndices = batch
-
-		precision = 0.0
-		loss = 0.0
-		recall = 0.0
-		f1 = 0.0
-		accuracy = 0.0
 
 		inputIDs = inputIDs.to(device)
 		inputMask = inputMask.to(device)
@@ -273,95 +276,19 @@ def main():
 			batchStartLogits, batchEndLogits = model(inputIDs, segmentIDs, inputMask)
 
 		for i, exampleIndex in enumerate(exampleIndices):
-#			print("Step {} - Preparing example {}...".format(step, i))
 			startLogits = batchStartLogits[i].detach().cpu().tolist()
 			endLogits = batchEndLogits[i].detach().cpu().tolist()
 			evalFeature = evalFeatures[exampleIndex.item()]
 			uniqueID = int(evalFeature.ID)
 			allResults.append(RawResult(ID=uniqueID, startLogits=startLogits, endLogits=endLogits))
 
-	outputPredFile = os.path.join(args.outputDir, "predictions.json")
-	outputNBestFile = os.path.join(args.outputDir, "nbest_predictions.json")
-	outputNullLogOddsFile = os.path.join(args.outputDir, "null_odds.json")
-	
-	if args.debugOutputDir:
-		with open(args.debugOutputDir + "/allResults.txt", "w") as file:
-			print(allResults, file=file)
+		outputPredFile = os.path.join(args.outputDir, "predictions.json")
+		outputNBestFile = os.path.join(args.outputDir, "nbest_predictions.json")
+		outputNullLogOddsFile = os.path.join(args.outputDir, "null_odds.json")
 
-	print("Writing predictions...")
-	writePredictions(evalExamples, evalFeatures, allResults, args.nBestSize, args.maxAnswerLength, args.doLowercase, outputPredFile, outputNBestFile, outputNullLogOddsFile, version_2_with_negative=args.useVer2, null_score_diff_threshold=0.0)
-	"""
-	for l in deactivatedLayers:
-		for v in l.parameters():
-			v.requires_grad = True
+		print("Writing predictions...")
+		writePredictions(evalExamples, evalFeatures, allResults, args.nBestSize, args.maxAnswerLength, args.doLowercase, outputPredFile, outputNBestFile, outputNullLogOddsFile, args.useVer2, 0.0)
 
-	deactivatedLayers = [model.bert, model.midIsImpossibleLinear, model.isImpossibleOutput]
-	for l in deactivatedLayers:
-		for v in l.parameters():
-			v.requires_grad = False
-
-	# Training for the QA part of the network
-	for _ in trange(int(numTrainEpochs), desc="QA Epoch"):
-		for step, batch in enumerate(tqdm(trainDataLoader, desc="Iteration for QA")):
-			if nGPU >= 1:
-				batch = tuple(t.to(device) for t in batch)
-
-			inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
-			startLogits, endLogits, _ = model(inputIDs, inputMask, segmentIDs)
-
-			if len(startPositions.size()) > 1:
-				startPositions = startPositions.squeeze(-1)
-			if len(endPositions.size()) > 1:
-				endPositions = endPositions.squeeze(-1)
-
-			ignoredIndexes = startLogits.size(1)
-			startPositions.clamp_(0, ignoredIndexes)
-			endPositions.clamp_(0, ignoredIndexes)
-
-			lossFun = CrossEntropyLoss(ignore_index=ignoredIndexes)
-			startLoss = lossFun(startLogits, startPositions)
-			endLoss = lossFun(endLogits, endPositions)
-			loss = (startLoss + endLoss) / 2
-	
-			if nGPU > 1:
-				loss = loss.mean()
-
-			loss.backward()
-
-			optimizer.step()
-			optimizer.zero_grad()
-			globalStep += 1
-	
-	model.to(device)
-
-	print("Predicting...")
-	model.eval()
-	allResults = []
-
-	for inputIDs, inputMask, segmentIDs, exampleIndices in tqdm(evalDataLoader, desc="Evaluating"):
-		if len(allResults) % 1000 == 0:
-			logger.info("Processing example: %d" % (len(allResults)))
-
-		inputIDs = inputIDs.to(device)
-		inputMask = inputMask.to(device)
-		segmentIDs = segmentIDs.to(device)
-
-		with torch.no_grad():
-			batchStartLogits, batchEndLogits, batchIsImpossible = model(inputIDs, inputMask, segmentIDs)
-
-		for i, exampleIndex in enumerate(exampleIndices):
-			startLogits = batchStartLogits[i].detach().cpu().tolist()
-			endLogits = batchEndLogits[i].detach().cpu().tolist()
-			evalFeature = evalFeatures[exampleIndex.item()]
-			uniqueID = int(evalFeature.ID)
-			allResults.append({"unique_id": uniqueID, "start_logits": startLogits, "end_logits": endLogits})
-
-		outputPredFile = os.path.join(outputDir, "predictions.json")
-		outputNBestFile = os.path.join(outputDir, "nbest_predictions.json")
-		outputNullLogOddsFile = os.path.join(outputDir, "null_odds.json")
-
-		writePredictions(evalExamples, evalFeatures, allResults, 20, 30, True, outputPredFile, outputNBestFile, outputNullLogOddsFile, usingV2=True, nullDiffThreshold=0.0)
-	"""
 	
 	
 if __name__ == "__main__":

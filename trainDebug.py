@@ -5,7 +5,7 @@ import pickle
 import torch
 import random
 import numpy as np
-from BERT import QABERT2LGELU, QABERT2LTanh, QABERT4L400Tanh, QABERT4L1024Tanh, QABERT4LReLU, QABERTVanilla, QABERTFail, QABERT
+from BERT import QABERT2LReLUSkip, QABERT2LGELU, QABERT2LTanh, QABERT4L400Tanh, QABERT4L1024Tanh, QABERT4LReLU, QABERTVanilla, QABERTFail, QABERT
 from Tokenization import BERTTokenizer
 from torch.nn import CrossEntropyLoss
 from torch.optim import Adam

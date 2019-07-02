@@ -83,15 +83,15 @@ class QABERT2LGELU(BERTInitializer):
 		super(QABERT2LGELU, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
 
 		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
-		self.middleOutput = nn.Linear(768, 384)
-		self.qaOutputs = nn.Linear(384, 2)
+		self.middleOutput1 = nn.Linear(768, 256)
+		self.qaOutputs = nn.Linear(256, 2)
 		self.activationFun = GELU()
 		self.dropout = nn.Dropout(dropout)
 		self.apply(self.weightsInitialization)
 
 	def forward(self, inputIDs, sequenceIDs, attentionMask):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
-		middleOutput1 = self.dropout(self.activationFun(self.middleOutput(bertOutput)))
+		middleOutput1 = self.dropout(self.activationFun(self.middleOutput1(bertOutput)))
 		logits = self.qaOutputs(middleOutput1)
 
 		startLogits, endLogits = logits.split(1, dim=-1)

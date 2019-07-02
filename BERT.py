@@ -302,7 +302,7 @@ class QABERT(BERTInitializer):
 		self.levels = []
 		if len(shapes) > 2:
 			for dim in range(0, len(shapes)-2):
-				name = "middleOutput" + str(dim+1) if len(shapes) > 3 else name = "middleOutput"
+				name = "middleOutput" + str(dim+1) if len(shapes) > 3 else "middleOutput"
 				setattr(self, name, nn.Linear(shapes[dim], shapes[dim+1]))
 				self.levels.append(self.name)
 				

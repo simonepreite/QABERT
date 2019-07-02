@@ -268,5 +268,40 @@ class QABERTFail(BERTInitializer):
 		return startLogits, endLogits, isImpOutput
 
 
+class QABERT(BERTInitializer):
+	def __init__(self, hiddenSize, numLayers=12, numAttentionHeads=12, vocabSize=30522, dropout=0.1, shapes=(768, 1024, 200, 64, 2), activationFun="ReLU"):
+		super(QABERT, self).__init__(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		
+		activationFunctions = {"ReLU":nn.ReLU(), "Tanh":nn.Tanh(), "GELU":GELU()}
 
+		if activationFun not in activationFunctions:
+			raise Exception(activationFun + " activation function is not available")
+			
+		self.bert = BERTModel(hiddenSize, numLayers, numAttentionHeads, vocabSize, dropout)
+		self.levels = []
+		if len(shapes) > 2:
+			for dim in range(0, len(shapes)-2):
+				name = "middleOutput" + str(dim+1) if len(shapes) > 3 else name = "middleOutput"
+				setattr(self, name, nn.Linear(shapes[dim], shapes[dim+1]))
+				self.levels.append(self.name)
+				
+		self.qaOutputs = nn.Linear(shapes[-2], 2)
+		self.activationFun = activationFunctions[activationFun]
+			
+		self.dropout = nn.Dropout(dropout)
+		self.apply(self.weightsInitialization)
+
+	def forward(self, inputIDs, sequenceIDs, attentionMask):
+		output = self.bert(inputIDs, sequenceIDs, attentionMask)
+		
+		for level in self.levels:
+			output = self.dropout(self.activationFun(level(output)))
+			
+		logits = self.qaOutputs(output)
+
+		startLogits, endLogits = logits.split(1, dim=-1)
+		startLogits = startLogits.squeeze(-1)
+		endLogits = endLogits.squeeze(-1)
+
+		return startLogits, endLogits
 		

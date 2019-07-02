@@ -49,7 +49,8 @@ def main():
 	parser.add_argument("--activationFun", default=None, type=str)
 	args = parser.parse_args()
 	
-	args.linearShapes = tuple(args.linearShapes)
+	if args.linearShapes:
+		args.linearShapes = tuple(args.linearShapes)
 	
 	if (not args.doTrain) and (not args.doPredict):
 		raise Exception("At least one between --doTrain and --doPredict must be True.")

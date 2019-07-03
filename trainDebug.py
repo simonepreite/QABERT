@@ -5,7 +5,7 @@ import pickle
 import torch
 import random
 import numpy as np
-from BERT import QABERT2LReLUSkip, QABERT2LGELU, QABERT2LTanh, QABERT4L400Tanh, QABERT4L1024Tanh, QABERT4LReLU, QABERTVanilla, QABERTFail, QABERT
+from BERT import QABERT4LGELUSkip, QABERT2LReLUSkip, QABERT2LGELU, QABERT2LTanh, QABERT4L400Tanh, QABERT4L1024Tanh, QABERT4LReLU, QABERTVanilla, QABERTFail, QABERT
 from Tokenization import BERTTokenizer
 from torch.nn import CrossEntropyLoss
 from torch.optim import Adam
@@ -73,8 +73,8 @@ def main():
 	if args.useTFCheckpoint:
 		convertedWeights = args.outputDir + "/ptWeights_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 		
-	#model =  QABERTVanilla.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize)
-	model = QABERT.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
+	model =  QABERT4LGELUSkip.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize)
+	#model = QABERT.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
 	
 	if args.debugOutputDir:
 		with open(args.debugOutputDir + "/modelSummary.txt", "w") as file:
@@ -265,8 +265,8 @@ def main():
 		torch.save(modelToSave.state_dict(), outputModelFile)
 
 		print("Loading finetuned model...")
-		#model = QABERTVAnilla.loadPretrained(outputModelFile, False, "", hiddenSize)
-		model = QABERT.loadPretrained(outputModelFile, False, "", hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
+		model = QABERT4LGELUSkip.loadPretrained(outputModelFile, False, "", hiddenSize)
+		#model = QABERT.loadPretrained(outputModelFile, False, "", hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
 
 
 	if args.doPredict:

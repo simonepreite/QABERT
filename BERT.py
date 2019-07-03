@@ -306,7 +306,7 @@ class QABERT4LGELUSkip(BERTInitializer):
 	def forward(self, inputIDs, sequenceIDs, attentionMask):
 		bertOutput = self.bert(inputIDs, sequenceIDs, attentionMask)
 		middleOutput1 = self.dropout(self.activationFun(self.middleOutput1(bertOutput)))
-		middleOutput2 = self.dropout(self.activationFun(self.middleOutput2(middleOutput2)))
+		middleOutput2 = self.dropout(self.activationFun(self.middleOutput2(middleOutput1)))
 		middleOutput3 = self.dropout(self.activationFun(self.middleOutput3(middleOutput2 + bertOutput)))
 		logits = self.qaOutputs(middleOutput3)
 

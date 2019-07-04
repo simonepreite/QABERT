@@ -53,17 +53,16 @@ def main():
 	parser.add_argument("--linearShapes", nargs="+", type=int, default=None)
 	parser.add_argument("--activationFun", default=None, type=str)
 	args = parser.parse_args()
-	
+
 	if args.linearShapes:
 		args.linearShapes = tuple(args.linearShapes)
-	
+
 	if (not args.doTrain) and (not args.doPredict):
 		raise Exception("At least one between --doTrain and --doPredict must be True.")
 
 	if args.useDebug:
 		if not os.path.isdir(args.outputDir + "/debug"):
-			os.mkdir(args.outputDir + "/debug", 0755)
-	
+			os.mkdir(args.outputDir + "/debug", 0o755)
 
 	seed = 42
 	hiddenSize = 768
@@ -76,19 +75,19 @@ def main():
 	torch.manual_seed(seed)
 	if nGPU > 0:
 		torch.cuda.manual_seed_all(seed)
-	
+
 	tokenizer = BERTTokenizer(args.vocabFile, args.doLowercase)
 
 	convertedWeights = ""
 	if args.useTFCheckpoint:
 		convertedWeights = args.outputDir + "/ptWeights_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
-		
+
 	model =  QABERT4LGELUSkip.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize)
 	#model = QABERT.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
-	
+
 	with open(args.outputDir + "/modelSummary.txt", "w") as file:
 		print(model, file=file)
-	
+
 	model.to(device)
 
 	if nGPU > 1:
@@ -107,7 +106,7 @@ def main():
 				print(json.dumps([t._asdict() for t in trainExamples], indent=2), file=file)
 
 		numTrainOptimizationStep = len(trainExamples) * args.trainEpochs
-		
+
 		paramOptimizer = list(model.named_parameters())
 		noDecay = ["bias", "NormLayer.bias", "NormLayer.weight"]
 		parameters = [
@@ -115,7 +114,7 @@ def main():
 			{"params" : [p for n, p in paramOptimizer if any(nd in n for nd in noDecay)], "weight_decay": 0.0}		
 		]
 		optimizer = BertAdam(parameters, lr=args.learningRate, warmup=0.1, t_total=numTrainOptimizationStep)
-		
+
 
 		cachedTrainFeaturesFile = args.outputDir + "/trainFeatures_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 
@@ -144,7 +143,7 @@ def main():
 
 		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos)
 #		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
-		
+
 		trainSampler = RandomSampler(trainData)
 		trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=args.trainBatchSize)
 
@@ -243,7 +242,7 @@ def main():
 				arg = "w"
 			with open(args.outputDir + "/lossEpochsTrace.txt", arg) as file:
 				print(torch.mean(torch.tensor(epochLosses)).item(), file=file)
-		
+
 		modelToSave = model.module if hasattr(model, "module") else model
 
 		print("Saving model...")
@@ -285,8 +284,8 @@ def main():
 
 		print("Writing predictions for {}dev dataset...".format("train " if args.useTrainDev else ""))
 		writePredictions(evalExamples, evalFeatures, allResults, args.nBestSize, args.maxAnswerLength, args.doLowercase, outputPredFile, outputNBestFile, outputNullLogOddsFile, args.useVer2, 0.0)
-	
-	
+
+
 if __name__ == "__main__":
 	main()
 

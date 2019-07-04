@@ -15,8 +15,13 @@ from tqdm import tqdm, trange
 import argparse
 from SQuADDataset import readSQuADDataset, featurizeExamples, writePredictions, RawResult
 import json
+from optimizer import BertAdam
+from knockknock import telegram_sender
 
+token=None
+chat_id=None
 
+@telegram_sender(token=token, chat_id=chat_id)
 def main():
 	parser = argparse.ArgumentParser()
 
@@ -85,9 +90,6 @@ def main():
 	if nGPU > 1:
 		model = torch.nn.DataParallel(model)
 
-	#TODO: optimizer has to be implemented
-	optimizer = Adam(model.parameters(), lr=args.learningRate)
-
 	print("Starting featurization...")
 	globalStep = 0
 
@@ -99,8 +101,18 @@ def main():
 				print(json.dumps([t._asdict() for t in trainExamples], indent=2), file=file)
 
 		# TODO: to be implemented
-		numTrainOptimizationStep = len(trainExamples) // args.trainBatchSize * args.trainEpochs
-
+		numTrainOptimizationStep = len(trainExamples) * args.trainEpochs
+		
+		paramOptimizer = list(model.named_parameters())
+		#paramOptimizer = [n for n in paramOptimizer if 'pooler' not in n[0]]
+		noDecay = ["bias", "NormLayer.bias", "NormLayer.weight"]
+		#TODO: optimizer has to be implemented
+		parameters = [
+			{"params" : [p for n, p in paramOptimizer if not any(nd in n for nd in noDecay)], "weight_decay": 0.01},
+			{"params" : [p for n, p in paramOptimizer if any(nd in n for nd in noDecay)], "weight_decay": 0.0}		
+		]
+		optimizer = BertAdam(parameters, lr=args.learningRate, warmup=0.1, t_total=numTrainOptimizationStep)
+		
 		cachedTrainFeaturesFile = args.outputDir + "/trainFeatures_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 
 		trainFeatures = None

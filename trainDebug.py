@@ -17,6 +17,7 @@ from SQuADDataset import readSQuADDataset, featurizeExamples, writePredictions, 
 import json
 from optimizer import BertAdam
 from knockknock import telegram_sender
+from utils import saveVocab
 
 token=""
 chat_id=None
@@ -111,10 +112,10 @@ def main():
 		noDecay = ["bias", "NormLayer.bias", "NormLayer.weight"]
 		parameters = [
 			{"params" : [p for n, p in paramOptimizer if not any(nd in n for nd in noDecay)], "weight_decay": 0.01},
-			{"params" : [p for n, p in paramOptimizer if any(nd in n for nd in noDecay)], "weight_decay": 0.0}		
+			{"params" : [p for n, p in paramOptimizer if any(nd in n for nd in noDecay)], "weight_decay": 0.0}
 		]
 		optimizer = BertAdam(parameters, lr=args.learningRate, warmup=0.1, t_total=numTrainOptimizationStep)
-
+		#optimizer = Adam(model.parameters(), lr=args.learningRate)
 
 		cachedTrainFeaturesFile = args.outputDir + "/trainFeatures_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 
@@ -235,7 +236,6 @@ def main():
 
 				optimizer.step()
 				optimizer.zero_grad()
-				globalStep += 1
 
 			arg = "a"
 			if epoch == 0:
@@ -248,6 +248,7 @@ def main():
 		print("Saving model...")
 		outputModelFile = args.outputDir + "/QABERTTrained_{}_{}_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, args.trainBatchSize, args.trainEpochs)
 		torch.save(modelToSave.state_dict(), outputModelFile)
+		saveVocab(tokenizer.vocab, args.outputDir)
 
 		print("Loading finetuned model...")
 		model = QABERT4LGELUSkip.loadPretrained(outputModelFile, False, "", hiddenSize)

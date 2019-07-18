@@ -21,22 +21,48 @@ from knockknock import telegram_sender
 token=""
 chat=None
 
-def setTGBot(token_id, chat_id):
-	token = token_id
-	chat = chat_id
-	
+#def setTGBot(token_id, chat_id):
+#	token = token_id
+#	chat = chat_id
+
 @telegram_sender(token=token, chat_id=chat)
 def main(outputDir, vocabFile, modelWeights, trainFile, predictFile, useTFCheckpoint, doTrain, doPredict, trainEpochs, trainBatchSize, predictBatchSize, paragraphStride, maxSeqLength, maxQueryLength, useVer2, learningRate, nBestSize, maxAnswerLength, doLowercase, useTrainDev, bertTrainable, useDebug, linearShapes, activationFun, model):
-	
+
 	models = {
-		"QABERT4LGELUSkip":QABERT4LGELUSkip, 
-		"QABERT2LReLUSkip":QABERT2LReLUSkip, 
-		"QABERT2LGELU":QABERT2LGELU, 
-		"QABERT2LTanh":QABERT2LTanh, 
-		"QABERT4L400Tanh":QABERT4L400Tanh, 
-		"QABERT4L1024Tanh":QABERT4L1024Tanh, 
-		"QABERT4LReLU":QABERT4LReLU, 
-		"QABERTVanilla":QABERTVanilla	
+		"QABERT4LGELUSkip":QABERT4LGELUSkip,
+		"QABERT2LReLUSkip":QABERT2LReLUSkip,
+		"QABERT2LGELU":QABERT2LGELU,
+		"QABERT2LTanh":QABERT2LTanh,
+		"QABERT4L400Tanh":QABERT4L400Tanh,
+		"QABERT4L1024Tanh":QABERT4L1024Tanh,
+		"QABERT4LReLU":QABERT4LReLU,
+		"QABERTVanilla":QABERTVanilla
+	}
+
+	args = {
+		"outputDir": outputDir,
+		"vocabFile": vocabFile,
+		"modelWeights": modelWeights,
+		"trainFile": trainFile,
+		"predictFile": predictFile,
+		"useTFCheckpoint": useTFCheckpoint,
+		"doTrain": doTrain,
+		"doPredict": doPredict,
+		"trainEpochs": trainEpochs,
+		"trainBatchSize": trainBatchSize,
+		"predictBatchSize": predictBatchSize,
+		"paragraphStride": paragraphStride,
+		"maxSeqLength": maxSeqLength,
+		"maxQueryLength": maxQueryLength,
+		"useVer2": useVer2,
+		"learningRate": learningRate,
+		"nBestSize": nBestSize,
+		"maxAnswerLength": maxAnswerLength,
+		"doLowercase": doLowercase,
+		"useTrainDev": useTrainDev,
+		"bertTrainable": bertTrainable,
+		"useDebug": useDebug,
+		"model": model
 	}
 
 	if linearShapes:
@@ -220,7 +246,6 @@ def main(outputDir, vocabFile, modelWeights, trainFile, predictFile, useTFCheckp
 
 				optimizer.step()
 				optimizer.zero_grad()
-				globalStep += 1
 
 			arg = "a"
 			if epoch == 0:

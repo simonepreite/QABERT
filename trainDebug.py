@@ -5,7 +5,7 @@ import pickle
 import torch
 import random
 import numpy as np
-from BERT import QABERT4LGELUSkip, QABERT2LReLUSkip, QABERT2LGELU, QABERT2LTanh, QABERT4L400Tanh, QABERT4L1024Tanh, QABERT4LReLU, QABERTVanilla, QABERTFail, QABERT
+from BERT import QABERT4LGELUSkip, QABERT2LReLUSkip, QABERT2LGELU, QABERT2LTanh, QABERT4LTanh, QABERT4LReLU, QABERTVanilla
 from Tokenization import BERTTokenizer
 from torch.nn import CrossEntropyLoss
 from torch.optim import Adam
@@ -51,12 +51,21 @@ def main():
 	parser.add_argument("--useTrainDev", action="store_true")
 	parser.add_argument("--bertTrainable", action="store_true")
 	parser.add_argument("--useDebug", action="store_true")
-	parser.add_argument("--linearShapes", nargs="+", type=int, default=None)
-	parser.add_argument("--activationFun", default=None, type=str)
+	parser.add_argument("--modelName", type=str, default="QABERTVanilla")
 	args = parser.parse_args()
 
-	if args.linearShapes:
-		args.linearShapes = tuple(args.linearShapes)
+	models = {
+		"QABERT4LGELUSkip":QABERT4LGELUSkip,
+		"QABERT2LReLUSkip":QABERT2LReLUSkip,
+		"QABERT2LGELU":QABERT2LGELU,
+		"QABERT2LTanh":QABERT2LTanh,
+		"QABERT4LTanh":QABERT4LTanh,
+		"QABERT4LReLU":QABERT4LReLU,
+		"QABERTVanilla":QABERTVanilla
+	}
+	
+	if args.modelName not in models:
+		raise Exception("Wrong model name.")
 
 	if (not args.doTrain) and (not args.doPredict):
 		raise Exception("At least one between --doTrain and --doPredict must be True.")
@@ -83,8 +92,7 @@ def main():
 	if args.useTFCheckpoint:
 		convertedWeights = args.outputDir + "/ptWeights_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 
-	model =  QABERT4LGELUSkip.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize)
-	#model = QABERT.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
+	model =  models[args.modelName].loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize)
 
 	with open(args.outputDir + "/modelSummary.txt", "w") as file:
 		print(model, file=file)
@@ -115,7 +123,6 @@ def main():
 			{"params" : [p for n, p in paramOptimizer if any(nd in n for nd in noDecay)], "weight_decay": 0.0}
 		]
 		optimizer = BertAdam(parameters, lr=args.learningRate, warmup=0.1, t_total=numTrainOptimizationStep)
-		#optimizer = Adam(model.parameters(), lr=args.learningRate)
 
 		cachedTrainFeaturesFile = args.outputDir + "/trainFeatures_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 
@@ -133,18 +140,14 @@ def main():
 			with open(args.outputDir + "/debug/trainFeaturesDebug.json", "w") as file:
 				print(json.dumps([t._asdict() for t in trainFeatures]), file=file)
 
-
 		print("Starting train dataset creation...")
 		allInputIDs = torch.tensor([f.inputIDs for f in trainFeatures], dtype=torch.long)
 		allInputMask = torch.tensor([f.inputMask for f in trainFeatures], dtype=torch.long)
 		allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
 		allStartPos = torch.tensor([f.startPos for f in trainFeatures], dtype=torch.long)
 		allEndPos = torch.tensor([f.endPos for f in trainFeatures], dtype=torch.long)
-		#allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
 
 		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos)
-#		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
-
 		trainSampler = RandomSampler(trainData)
 		trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=args.trainBatchSize)
 
@@ -179,7 +182,6 @@ def main():
 		allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
 		allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
 		allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
-	#		allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
 		evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
 
 		evalSampler = SequentialSampler(evalData)
@@ -203,7 +205,6 @@ def main():
 				if nGPU >= 1:
 					batch = tuple(t.to(device) for t in batch)
 
-#				inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
 				inputIDs, inputMask, segmentIDs, startPositions, endPositions = batch
 				startLogits, endLogits = model(inputIDs, segmentIDs, inputMask)
 
@@ -251,8 +252,7 @@ def main():
 		saveVocab(tokenizer.vocab, args.outputDir)
 
 		print("Loading finetuned model...")
-		model = QABERT4LGELUSkip.loadPretrained(outputModelFile, False, "", hiddenSize)
-		#model = QABERT.loadPretrained(outputModelFile, False, "", hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
+		model = models[args.modelName].loadPretrained(outputModelFile, False, "", hiddenSize)
 
 
 	if args.doPredict:

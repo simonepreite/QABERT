@@ -21,10 +21,6 @@ from knockknock import telegram_sender
 token=""
 chat=None
 
-#def setTGBot(token_id, chat_id):
-#	token = token_id
-#	chat = chat_id
-
 @telegram_sender(token=token, chat_id=chat)
 def main(outputDir, vocabFile, modelWeights, trainFile, predictFile, useTFCheckpoint, doTrain, doPredict, trainEpochs, trainBatchSize, predictBatchSize, paragraphStride, maxSeqLength, maxQueryLength, useVer2, learningRate, nBestSize, maxAnswerLength, doLowercase, useTrainDev, bertTrainable, useDebug, linearShapes, activationFun, model):
 
@@ -64,9 +60,9 @@ def main(outputDir, vocabFile, modelWeights, trainFile, predictFile, useTFCheckp
 		"useDebug": useDebug,
 		"model": model
 	}
-
-	if linearShapes:
-		linearShapes = tuple(linearShapes)
+	
+	if args.modelName not in models:
+		raise Exception("Wrong model name.")
 
 	if (not doTrain) and (not doPredict):
 		raise Exception("At least one between --doTrain and --doPredict must be True.")

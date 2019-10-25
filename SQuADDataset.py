@@ -280,6 +280,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 		print("Saving feature file: {}...".format(filenames[fileIndex]))
 		hickle.dump(features, filenames[fileIndex], compression="gzip", track_times=False)
 
+	print("Finished {}...".format(filenames))
 	return features
 
 def improveAnswerExtent(chunk, inputStart, inputEnd, tokenizer, originalAnswer):

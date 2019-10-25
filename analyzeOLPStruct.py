@@ -5,6 +5,27 @@ import json
 import hickle
 from SQuADDataset import readSQuADDataset, featurizeExamples
 from Tokenization import BERTTokenizer
+import multiprocessing
+
+def multiprocessFeaturize(examples, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, filenames):
+
+	procs = []
+	for (index, file) in enumerate(filenames):
+		if index == len(filenames)-1:
+			examplesSlice = examples[index*64:]
+		else:
+			examplesSlice = examples[index*64:index*64+64]
+		args = (examplesSlice, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, [filenames[index]])
+		procs.append(multiprocessing.Process(target=featurizeExamples, args=args))
+
+	for p in procs:
+		p.start()
+
+	for p in procs:
+		p.join()
+
+	print("DONE!")
+
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -37,7 +58,7 @@ def main():
 		print(evalFeatures[0])
 	except:
 		print("Building features...");
-		features = featurizeExamples(examples, tokenizer, 384, 128, 64, False, cachedEvalFeaturesFileNames)
+		#features = featurizeExamples(examples, tokenizer, 384, 128, 64, False, cachedEvalFeaturesFileNames)
 
 		#assert len(features) == len(cachedEvalFeaturesFileNames)
 

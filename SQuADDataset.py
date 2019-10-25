@@ -139,10 +139,10 @@ def computeSoftmax(scores):
 	
 
 
-def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode, filenames):
+def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode, chunkSize, filenames):
 	uniqueID = 1000000000
 	
-	assert len(filenames) == (len(examples) // 64 + 1) if len(examples) % 64 else len(examples) // 64
+	assert len(filenames) == (len(examples) // chunkSize + 1) if len(examples) % chunkSize else len(examples) // chunkSize
 
 	features = []
 	fileIndex = 0
@@ -267,8 +267,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 			uniqueID += 1
 
 		features.append(fileFeatures)
-		print("len features: {}".format(len(features)))
-		if len(features) % 64 == 0:
+		if len(features) % chunkSize == 0:
 			#with open(filenames[fileIndex] , "wb") as file:
 			print("Saving feature file: {}...".format(filenames[fileIndex]))
 			hickle.dump(features, filenames[fileIndex], compression="gzip", track_times=False)

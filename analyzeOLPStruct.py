@@ -2,7 +2,7 @@
 
 import argparse
 import json
-import pickle
+import hickle
 from SQuADDataset import readSQuADDataset, featurizeExamples
 from Tokenization import BERTTokenizer
 
@@ -31,7 +31,7 @@ def main():
 		for elem in cachedEvalFeaturesFileNames:
 			with open(elem, "rb") as file:
 				print("Loading feature file: {}...".format(elem))
-				evalFeatures.append(pickle.load(file))
+				evalFeatures.append(hickle.load(file, safe=False))
 
 		print(evalFeatures[0])
 	except:
@@ -43,7 +43,7 @@ def main():
 		for (index, elem) in enumerate(cachedEvalFeaturesFileNames):
 			with open(elem, "wb") as file:
 				print("Saving feature file: {}...".format(elem))
-				pickle.dump(features[index], file)
+				hickle.dump(features[index], elem, compression="gzip", track_times=False)
 
 	#with open(args.outputFile + ".features.bin.json", "w", encoding="utf-8") as file:
 	#	print(json.dumps([t._asdict() for t in features[:1]]), file=file)

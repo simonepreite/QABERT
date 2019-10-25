@@ -6,6 +6,7 @@ from pprint import pprint
 from Tokenization import BERTTokenizer, BasicTokenizer
 from collections import namedtuple, defaultdict, OrderedDict
 from utils import stripSpacesForRebuild, cleanWhitespaces
+import hickle
 
 
 InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
@@ -138,10 +139,13 @@ def computeSoftmax(scores):
 	
 
 
-def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode):
+def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode, filenames):
 	uniqueID = 1000000000
 	
+	assert len(filenames) == (len(examples) // 64 + 1) if len(examples) % 64 else len(examples) // 64
+
 	features = []
+	fileIndex = 0
 	for (index, example) in enumerate(examples):
 		fileFeatures = []
 		queryTokens = tokenizer.tokenize(example.questionText)
@@ -263,6 +267,18 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 			uniqueID += 1
 
 		features.append(fileFeatures)
+
+		if len(features) % 64 == 0:
+			with open(filenames[fileIndex] , "wb") as file:
+				print("Saving feature file: {}...".format(filenames[fileIndex]))
+				hickle.dump(features, file, compression="gzip", track_times=False)
+				fileIndex += 1
+				features = []
+
+	if len(features) > 0:
+		with open(filenames[fileIndex] , "wb") as file:
+			print("Saving feature file: {}...".format(filenames[fileIndex]))
+			hickle.dump(features, file, compression="gzip", track_times=False)
 
 	return features
 

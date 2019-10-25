@@ -20,13 +20,14 @@ def main():
 
 	tokenizer = BERTTokenizer(args.vocabFile, True)
 
-	cachedEvalFeaturesFileNames = [args.outputDir + "/evalFeatures_file{}.bin".format(i) for i in range(1, len(examples)+1)]
+	numFiles = (len(examples) // 64 + 1) if len(examples) % 64 else len(examples) // 64
+	cachedEvalFeaturesFileNames = [args.outputDir + "/evalFeatures_file{}.bin".format(i) for i in range(1, numFiles+1)]
 	print("examples length: {}".format(len(examples)))
 	print("filenames length: {}".format(len(cachedEvalFeaturesFileNames)))
 
 	evalFeatures = []
 	try:
-		assert len(examples) == len(cachedEvalFeaturesFileNames)
+		#assert len(examples) == len(cachedEvalFeaturesFileNames)
 
 		for elem in cachedEvalFeaturesFileNames:
 			with open(elem, "rb") as file:
@@ -36,14 +37,14 @@ def main():
 		print(evalFeatures[0])
 	except:
 		print("Building features...");
-		features = featurizeExamples(examples, tokenizer, 384, 128, 64, False)
+		features = featurizeExamples(examples, tokenizer, 384, 128, 64, False, cachedEvalFeaturesFileNames)
 
-		assert len(features) == len(cachedEvalFeaturesFileNames)
+		#assert len(features) == len(cachedEvalFeaturesFileNames)
 
-		for (index, elem) in enumerate(cachedEvalFeaturesFileNames):
-			with open(elem, "wb") as file:
-				print("Saving feature file: {}...".format(elem))
-				hickle.dump(features[index], elem, compression="gzip", track_times=False)
+		# for (index, elem) in enumerate(cachedEvalFeaturesFileNames):
+		# 	with open(elem, "wb") as file:
+		# 		print("Saving feature file: {}...".format(elem))
+		# 		hickle.dump(features[index], elem, compression="gzip", track_times=False)
 
 	#with open(args.outputFile + ".features.bin.json", "w", encoding="utf-8") as file:
 	#	print(json.dumps([t._asdict() for t in features[:1]]), file=file)

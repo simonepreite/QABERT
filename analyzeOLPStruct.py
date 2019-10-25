@@ -58,6 +58,7 @@ def main():
 		print(evalFeatures[0])
 	except:
 		print("Building features...");
+		multiprocessFeaturize(examples, tokenizer, 384, 128, 64, False, cachedEvalFeaturesFileNames)
 		#features = featurizeExamples(examples, tokenizer, 384, 128, 64, False, cachedEvalFeaturesFileNames)
 
 		#assert len(features) == len(cachedEvalFeaturesFileNames)

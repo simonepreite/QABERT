@@ -267,18 +267,18 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 			uniqueID += 1
 
 		features.append(fileFeatures)
-
+		print("len features: {}".format(len(features)))
 		if len(features) % 64 == 0:
-			with open(filenames[fileIndex] , "wb") as file:
-				print("Saving feature file: {}...".format(filenames[fileIndex]))
-				hickle.dump(features, file, compression="gzip", track_times=False)
-				fileIndex += 1
-				features = []
+			#with open(filenames[fileIndex] , "wb") as file:
+			print("Saving feature file: {}...".format(filenames[fileIndex]))
+			hickle.dump(features, filenames[fileIndex], compression="gzip", track_times=False)
+			fileIndex += 1
+			features = []
 
 	if len(features) > 0:
-		with open(filenames[fileIndex] , "wb") as file:
-			print("Saving feature file: {}...".format(filenames[fileIndex]))
-			hickle.dump(features, file, compression="gzip", track_times=False)
+		#with open(filenames[fileIndex] , "wb") as file:
+		print("Saving feature file: {}...".format(filenames[fileIndex]))
+		hickle.dump(features, filenames[fileIndex], compression="gzip", track_times=False)
 
 	return features
 

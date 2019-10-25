@@ -22,12 +22,12 @@ def multiprocessFeaturize(examples, tokenizer, maxSeqLength, maxParLength, maxQu
 	assert numSlices == len(filenames)
 
 	for i in range(numSlices):
-		if i == numSLices-1:
+		if i == numSlices-1:
 			dataSlice = examples[i*chunkSize]
 		else:
 			dataSlice = examples[i*chunkSize:i*chunkSize+chunkSize]
 
-		args = (dataSlice, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, filenames[i])
+		args = (dataSlice, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, chunkSize, [filenames[i]])
 		parallelizedData.append(args)
 
 	pool = mp.Pool(cpuCount)

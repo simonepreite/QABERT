@@ -10,7 +10,7 @@ import os
 
 def multiprocessFeaturize(examples, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, chunkSize, filenames):
 
-	cpuCount = 1 if "SLURM_JOB_CPUS_PER_NODE" not in os.environ else os.environ["SLURM_JOB_CPUS_PER_NODE"]
+	cpuCount = 1 if "SLURM_JOB_CPUS_PER_NODE" not in os.environ else int(os.environ["SLURM_JOB_CPUS_PER_NODE"])
 	parallelizedData = []
 
 	print("Spawning featurization on {} cores...".format(cpuCount))

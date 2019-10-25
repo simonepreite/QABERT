@@ -143,6 +143,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 	
 	features = []
 	for (index, example) in enumerate(examples):
+		fileFeatures = []
 		queryTokens = tokenizer.tokenize(example.questionText)
 		
 		if len(queryTokens) > maxQueryLength:
@@ -258,8 +259,10 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 									  startPos=startPosition,
 									  endPos=endPosition,
 									  isImpossible=example.isImpossible)
-			features.append(inputFeat)
+			fileFeatures.append(inputFeat)
 			uniqueID += 1
+
+		features.append(fileFeatures)
 
 	return features
 

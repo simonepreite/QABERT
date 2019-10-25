@@ -158,22 +158,34 @@ def main():
 			with open(args.outputDir + "/debug/evalExamplesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
 				print(json.dumps([t._asdict() for t in evalExamples], indent=2), file=file)
 
-		cachedEvalFeaturesFile = args.outputDir + "/evalFeatures{}_{}_{}_{}_{}_{}.bin".format("_trainDev" if args.useTrainDev else "", "uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
+		if not os.path.exists(args.outputDir + "/features/eval")
+			os.makedirs(args.outputDir + "/features/eval")
+			
+		cachedEvalFeaturesFileNames = [args.outputDir + "/features/eval/evalFeatures{}_file{}_{}_{}_{}_{}_{}.bin".format("_trainDev" if args.useTrainDev else "", i, "uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength) for i in range(1, len(evalExamples))]
 
-		evalFeatures = None
+		evalFeatures = []
 		try:
-			with open(cachedEvalFeaturesFile, "rb") as reader:
-				evalFeatures = pickle.load(reader)
+			assert len(evalExamples) == len(cachedEvalFeaturesFileNames)
+
+			for elem in cachedEvalFeaturesFileNames:
+				with open(elem, "rb") as reader:
+					print("Loading feature file: {}...".format(elem))
+					evalFeatures.append(pickle.load(reader))
 		except:
 			print("Building {}dev features...".format("train " if args.useTrainDev else ""))
 			evalFeatures = featurizeExamples(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False)
-			with open(cachedEvalFeaturesFile, "wb") as writer:
-				pickle.dump(evalFeatures, writer)
+
+			assert len(evalFeatures) == len(cachedEvalFeaturesFileNames)
+
+			for (index, elem) in enumerate(cachedEvalFeaturesFileNames):
+				with open(elem, "wb") as writer:
+					pickle.dump(evalFeatures[index], writer)
 
 		if args.useDebug:
 			with open(args.outputDir + "/debug/evalFeaturesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
 				print(json.dumps([t._asdict() for t in evalFeatures], indent=2), file=file)
 
+		# TODO: update to list of lists structure
 		allInputIDs = torch.tensor([f.inputIDs for f in evalFeatures], dtype=torch.long)
 		allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
 		allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)

@@ -8,7 +8,7 @@ from Tokenization import BERTTokenizer
 import multiprocessing as mp
 import os
 
-def multiprocessFeaturize(examples, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, chunkSize, filenames):
+def multiprocessFeaturize(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode, chunkSize, filenames):
 
 	cpuCount = 1 if "SLURM_JOB_CPUS_PER_NODE" not in os.environ else int(os.environ["SLURM_JOB_CPUS_PER_NODE"])
 	parallelizedData = []
@@ -23,11 +23,11 @@ def multiprocessFeaturize(examples, tokenizer, maxSeqLength, maxParLength, maxQu
 
 	for i in range(numSlices):
 		if i == numSlices-1:
-			dataSlice = examples[i*chunkSize]
+			dataSlice = examples[i*chunkSize:]
 		else:
 			dataSlice = examples[i*chunkSize:i*chunkSize+chunkSize]
 
-		args = (dataSlice, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, chunkSize, [filenames[i]])
+		args = (dataSlice, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode, chunkSize, [filenames[i]])
 		parallelizedData.append(args)
 
 	pool = mp.Pool(cpuCount)
@@ -35,26 +35,6 @@ def multiprocessFeaturize(examples, tokenizer, maxSeqLength, maxParLength, maxQu
 	pool.close()
 	pool.join()
 	print("Multiprocess featurization is DONE!")
-
-
-# def multiprocessFeaturize(examples, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, filenames):
-
-# 	procs = []
-# 	for (index, file) in enumerate(filenames):
-# 		if index == len(filenames)-1:
-# 			examplesSlice = examples[index*64:]
-# 		else:
-# 			examplesSlice = examples[index*64:index*64+64]
-# 		args = (examplesSlice, tokenizer, maxSeqLength, maxParLength, maxQueryLength, trainingMode, [filenames[index]])
-# 		procs.append(multiprocessing.Process(target=featurizeExamples, args=args))
-
-# 	for p in procs:
-# 		p.start()
-
-# 	for p in procs:
-# 		p.join()
-
-# 	print("DONE!")
 
 
 def main():
@@ -66,10 +46,6 @@ def main():
 	args = parser.parse_args()
 
 	examples = readSQuADDataset(args.inputFile, False, squadV2=True)
-
-	#with open(args.outputFile, "w+", encoding="utf-8") as file:
-	#	json.dump(examples, file)
-
 	tokenizer = BERTTokenizer(args.vocabFile, True)
 
 	numFiles = (len(examples) // args.examplesPerFile + 1) if len(examples) % args.examplesPerFile else len(examples) // args.examplesPerFile
@@ -79,8 +55,6 @@ def main():
 
 	evalFeatures = []
 	try:
-		#assert len(examples) == len(cachedEvalFeaturesFileNames)
-
 		for elem in cachedEvalFeaturesFileNames:
 			with open(elem, "rb") as file:
 				print("Loading feature file: {}...".format(elem))
@@ -88,17 +62,6 @@ def main():
 	except:
 		print("Building features...");
 		multiprocessFeaturize(examples, tokenizer, 384, 128, 64, False, 64, cachedEvalFeaturesFileNames)
-		#features = featurizeExamples(examples, tokenizer, 384, 128, 64, False, cachedEvalFeaturesFileNames)
-
-		#assert len(features) == len(cachedEvalFeaturesFileNames)
-
-		# for (index, elem) in enumerate(cachedEvalFeaturesFileNames):
-		# 	with open(elem, "wb") as file:
-		# 		print("Saving feature file: {}...".format(elem))
-		# 		hickle.dump(features[index], elem, compression="gzip", track_times=False)
-
-	#with open(args.outputFile + ".features.bin.json", "w", encoding="utf-8") as file:
-	#	print(json.dumps([t._asdict() for t in features[:1]]), file=file)
 
 
 if __name__ == "__main__":

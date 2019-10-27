@@ -2,12 +2,14 @@
 
 import argparse
 import json
-import hickle
+import pickle as hickle
 from SQuADDataset import readSQuADDataset, featurizeExamples
 from Tokenization import BERTTokenizer
 import multiprocessing as mp
 import os
+from knockknock import telegram_sender
 
+@telegram_sender(token="828160431:AAFaIhdaDfsOTNwV-7HQF2WEageQGuVHR7E", chat_id=15495368)
 def multiprocessFeaturize(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode, chunkSize, filenames):
 
 	cpuCount = 1 if "SLURM_JOB_CPUS_PER_NODE" not in os.environ else int(os.environ["SLURM_JOB_CPUS_PER_NODE"])
@@ -58,11 +60,12 @@ def main():
 		for elem in cachedEvalFeaturesFileNames:
 			with open(elem, "rb") as file:
 				print("Loading feature file: {}...".format(elem))
-				evalFeatures.append(hickle.load(file, safe=False))
+				evalFeatures.append(hickle.load(file))
 	except:
 		print("Building features...");
 		multiprocessFeaturize(examples, tokenizer, 384, 128, 64, False, 64, cachedEvalFeaturesFileNames)
 
+	print(evalFeatures[0])
 
 if __name__ == "__main__":
 	main()

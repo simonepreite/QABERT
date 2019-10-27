@@ -16,12 +16,13 @@ import argparse
 from SQuADDataset import readSQuADDataset, featurizeExamples, writePredictions, RawResult
 import json
 from optimizer import BertAdam
+#import itertools
 from knockknock import telegram_sender
 
 token=""
 chat_id=None
 
-@telegram_sender(token=token, chat_id=chat_id)
+#@telegram_sender(token=token, chat_id=chat_id)
 def main():
 	parser = argparse.ArgumentParser()
 
@@ -52,6 +53,7 @@ def main():
 	parser.add_argument("--useDebug", action="store_true")
 	parser.add_argument("--linearShapes", nargs="+", type=int, default=None)
 	parser.add_argument("--activationFun", default=None, type=str)
+	parser.add_argument("--examplesPerFile", type=int, default=64)
 	args = parser.parse_args()
 
 	if args.linearShapes:
@@ -158,29 +160,44 @@ def main():
 			with open(args.outputDir + "/debug/evalExamplesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
 				print(json.dumps([t._asdict() for t in evalExamples], indent=2), file=file)
 
-		if not os.path.exists(args.outputDir + "/features/eval")
-			os.makedirs(args.outputDir + "/features/eval")
-			
-		cachedEvalFeaturesFileNames = [args.outputDir + "/features/eval/evalFeatures{}_file{}_{}_{}_{}_{}_{}.bin".format("_trainDev" if args.useTrainDev else "", i, "uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength) for i in range(1, len(evalExamples))]
+		#if not os.path.exists(args.outputDir + "/features/eval"):
+		#	os.makedirs(args.outputDir + "/features/eval")
+
+		# TODO: Update file names
+		#numFiles = (len(evalExamples) // args.examplesPerFile + 1) if len(evalExamples) % args.examplesPerFile else len(evalExamples) // args.examplesPerFile
+		#cachedEvalFeaturesFileNames = [args.outputDir + "/evalFeatures_file{}.bin".format(i) for i in range(1, numFiles+1)]
+
+		cachedEvalFeaturesFileName = args.outputDir + "/evalFeatures{}_{}_{}_{}_{}_{}.bin".format("_trainDev" if args.useTrainDev else "", "uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 
 		evalFeatures = []
 		try:
-			assert len(evalExamples) == len(cachedEvalFeaturesFileNames)
+			#assert len(evalExamples) == len(cachedEvalFeaturesFileNames)
 
-			for elem in cachedEvalFeaturesFileNames:
-				with open(elem, "rb") as reader:
-					print("Loading feature file: {}...".format(elem))
-					evalFeatures.append(pickle.load(reader))
+			#for elem in cachedEvalFeaturesFileNames:
+			with open(cachedEvalFeaturesFileName, "rb") as reader:
+				#	print("Loading feature file: {}...".format(elem))
+					# TODO: Remove list of lists
+				evalFeatures = pickle.load(reader)
+				#	for f in loaded:
+				#		evalFeatures.append(f)
 		except:
 			print("Building {}dev features...".format("train " if args.useTrainDev else ""))
 			evalFeatures = featurizeExamples(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False)
 
-			assert len(evalFeatures) == len(cachedEvalFeaturesFileNames)
+			#assert len(evalFeatures) == len(cachedEvalFeaturesFileNames)
 
-			for (index, elem) in enumerate(cachedEvalFeaturesFileNames):
-				with open(elem, "wb") as writer:
-					pickle.dump(evalFeatures[index], writer)
+			#for (index, elem) in enumerate(cachedEvalFeaturesFileNames):
+			with open(cachedEvalFeaturesFileName, "wb") as writer:
+				pickle.dump(evalFeatures, writer)
 
+		#evalFeatures = list(itertools.chain(*evalFeatures))
+
+		#print(type(evalFeatures))
+		#print()
+		#for e in evalFeatures:
+		#	print(type(e))
+
+		#exit()
 		if args.useDebug:
 			with open(args.outputDir + "/debug/evalFeaturesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
 				print(json.dumps([t._asdict() for t in evalFeatures], indent=2), file=file)

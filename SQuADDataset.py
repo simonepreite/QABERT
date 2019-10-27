@@ -1,12 +1,13 @@
 import json
 import math
 import os
+import random
 from io import open
 from pprint import pprint
 from Tokenization import BERTTokenizer, BasicTokenizer
 from collections import namedtuple, defaultdict, OrderedDict
 from utils import stripSpacesForRebuild, cleanWhitespaces
-import hickle
+#import pickle as hickle
 
 
 InputFeatures = namedtuple("InputFeatures", ["ID", "exampleID", "chunkID", "tokens", "tokenFirstWordpieceMap", "tokenMostRelevantChunk", "inputIDs", "inputMask", "segmentIDs", "startPos", "endPos", "isImpossible"])
@@ -139,33 +140,33 @@ def computeSoftmax(scores):
 	
 
 
-def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode, chunkSize, filenames):
+def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode):
 	uniqueID = 1000000000
-	
-	assert len(filenames) == (len(examples) // chunkSize + 1) if len(examples) % chunkSize else len(examples) // chunkSize
+
+	#assert len(filenames) == (len(examples) // chunkSize + 1) if len(examples) % chunkSize else len(examples) // chunkSize
 
 	features = []
-	fileIndex = 0
+#	fileIndex = 0
 	for (index, example) in enumerate(examples):
-		fileFeatures = []
+#		fileFeatures = []
 		queryTokens = tokenizer.tokenize(example.questionText)
-		
+
 		if len(queryTokens) > maxQueryLength:
 			queryTokens = queryTokens[0:maxQueryLength]
-		
+
 		tokenFirstWordpieceIndex = []
 		firstWordpieceTokenIndex = []
 		wordpieceParagraph = []
-		
+
 		for (i, token) in enumerate(example.parWords):
 			firstWordpieceTokenIndex.append(len(wordpieceParagraph))
 			subTokens = tokenizer.tokenize(token)
 			for subToken in subTokens:
 				tokenFirstWordpieceIndex.append(i)
 				wordpieceParagraph.append(subToken)
-				
+
 		tokStartPos = None
-		tokEndPos = None 
+		tokEndPos = None
 		if trainingMode:
 			if example.isImpossible:
 				tokStartPos = -1
@@ -177,20 +178,20 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 				else:
 					tokEndPos = len(wordpieceParagraph) - 1
 				(tokStartPos, tokEndPos) = improveAnswerExtent(wordpieceParagraph, tokStartPos, tokEndPos, tokenizer, example.answerText)
-		
+
 		maxTokensForChunks = maxSeqLength - len(queryTokens) - 3
-		
+
 		parChunks = [] #doc_spans
 		startOffset = 0
 		while startOffset < len(wordpieceParagraph):
-			length = len(wordpieceParagraph) - 	startOffset
+			length = len(wordpieceParagraph) - startOffset
 			if length > maxTokensForChunks:
 				length = maxTokensForChunks
 			parChunks.append(DocSpan(start=startOffset, length=length))
 			if startOffset + length == len(wordpieceParagraph):
 				break
 			startOffset += min(length, docStride)
-			
+
 		for (parChunkIndex, parChunk) in enumerate(parChunks):
 			tokens = []
 			tokenFirstWordpieceMap = {}
@@ -250,7 +251,7 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 						chunkOffset = len(queryTokens) + 2 # because of tags like [CLS] or [SEP]
 						startPosition = tokStartPos - chunkStart + chunkOffset
 						endPosition = tokEndPos - chunkStart + chunkOffset
-
+			#uniqueID = random.randint(100000000, 999999999)
 			inputFeat = InputFeatures(ID=uniqueID,
 									  exampleID=index,
 									  chunkID=parChunkIndex,
@@ -263,23 +264,25 @@ def featurizeExamples(examples, tokenizer, maxSeqLength, docStride, maxQueryLeng
 									  startPos=startPosition,
 									  endPos=endPosition,
 									  isImpossible=example.isImpossible)
-			fileFeatures.append(inputFeat)
+#			fileFeatures.append(inputFeat)
+			features.append(inputFeat)
 			uniqueID += 1
 
-		features.append(fileFeatures)
-		if len(features) % chunkSize == 0:
-			#with open(filenames[fileIndex] , "wb") as file:
-			print("Saving feature file: {}...".format(filenames[fileIndex]))
-			hickle.dump(features, filenames[fileIndex], compression="gzip", track_times=False)
-			fileIndex += 1
-			features = []
+#		features.append(fileFeatures)
+#		if len(features) % chunkSize == 0:
+#			with open(filenames[fileIndex] , "wb") as file:
+#				print("Saving feature file: {}...".format(filenames[fileIndex]))
+#				hickle.dump(features, file)
+#				fileIndex += 1
+#				features = []
 
-	if len(features) > 0:
-		#with open(filenames[fileIndex] , "wb") as file:
-		print("Saving feature file: {}...".format(filenames[fileIndex]))
-		hickle.dump(features, filenames[fileIndex], compression="gzip", track_times=False)
+#	if len(features) > 0:
+#		with open(filenames[fileIndex] , "wb") as file:
+#			print("Saving feature file: {}...".format(filenames[fileIndex]))
+#			hickle.dump(features, file)
 
-	print("Finished {}...".format(filenames))
+#	print("Finished {}...".format(filenames))
+#	return features
 	return features
 
 def improveAnswerExtent(chunk, inputStart, inputEnd, tokenizer, originalAnswer):

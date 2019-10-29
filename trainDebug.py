@@ -13,10 +13,12 @@ from torch.utils.data import DataLoader, SequentialSampler, TensorDataset, Rando
 from collections import namedtuple
 from tqdm import tqdm, trange
 import argparse
-from SQuADDataset import readSQuADDataset, featurizeExamples, writePredictions, RawResult
+from SQuADDataset import readSQuADDataset, writePredictions, RawResult
+from parallelFeaturization import multiprocessFeaturize
 import json
+import itertools
 from optimizer import BertAdam
-#import itertools
+import itertools
 from knockknock import telegram_sender
 
 token=""
@@ -242,7 +244,7 @@ def main():
 
 				optimizer.step()
 				optimizer.zero_grad()
-				globalStep += 1
+				#globalStep += 1
 
 			arg = "a"
 			if epoch == 0:

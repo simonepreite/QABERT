@@ -53,7 +53,7 @@ def main():
 	parser.add_argument("--useDebug", action="store_true")
 	parser.add_argument("--linearShapes", nargs="+", type=int, default=None)
 	parser.add_argument("--activationFun", default=None, type=str)
-	parser.add_argument("--examplesPerFile", type=int, default=64)
+	parser.add_argument("--featuresChunkSize", type=int, default=64)
 	args = parser.parse_args()
 
 	if args.linearShapes:
@@ -123,10 +123,12 @@ def main():
 		trainFeatures = None
 		try:
 			with open(cachedTrainFeaturesFile, "rb") as reader:
+				print("Loading features file: {}...".format(cachedTrainFeaturesFile))
 				trainFeatures = pickle.load(reader)
 		except:
 			print("Building train features...")
-			trainFeatures = featurizeExamples(trainExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, True)
+			trainFeatures = multiprocessFeaturize(trainExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, True, args.featuresChunkSize)
+			trainFeatures = list(itertools.chain(*trainFeatures))
 			with open(cachedTrainFeaturesFile, "wb") as writer:
 				pickle.dump(trainFeatures, writer)
 
@@ -160,44 +162,20 @@ def main():
 			with open(args.outputDir + "/debug/evalExamplesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
 				print(json.dumps([t._asdict() for t in evalExamples], indent=2), file=file)
 
-		#if not os.path.exists(args.outputDir + "/features/eval"):
-		#	os.makedirs(args.outputDir + "/features/eval")
-
-		# TODO: Update file names
-		#numFiles = (len(evalExamples) // args.examplesPerFile + 1) if len(evalExamples) % args.examplesPerFile else len(evalExamples) // args.examplesPerFile
-		#cachedEvalFeaturesFileNames = [args.outputDir + "/evalFeatures_file{}.bin".format(i) for i in range(1, numFiles+1)]
-
 		cachedEvalFeaturesFileName = args.outputDir + "/evalFeatures{}_{}_{}_{}_{}_{}.bin".format("_trainDev" if args.useTrainDev else "", "uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 
-		evalFeatures = []
+		evalFeatures = None
 		try:
-			#assert len(evalExamples) == len(cachedEvalFeaturesFileNames)
-
-			#for elem in cachedEvalFeaturesFileNames:
 			with open(cachedEvalFeaturesFileName, "rb") as reader:
-				#	print("Loading feature file: {}...".format(elem))
-					# TODO: Remove list of lists
+				print("Loading features file: {}...".format(cachedEvalFeaturesFileName))
 				evalFeatures = pickle.load(reader)
-				#	for f in loaded:
-				#		evalFeatures.append(f)
 		except:
 			print("Building {}dev features...".format("train " if args.useTrainDev else ""))
-			evalFeatures = featurizeExamples(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False)
-
-			#assert len(evalFeatures) == len(cachedEvalFeaturesFileNames)
-
-			#for (index, elem) in enumerate(cachedEvalFeaturesFileNames):
+			evalFeatures = multiprocessFeaturize(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False, args.featuresChunkSize)
+			evalFeatures = list(itertools.chain(*evalFeatures))
 			with open(cachedEvalFeaturesFileName, "wb") as writer:
 				pickle.dump(evalFeatures, writer)
 
-		#evalFeatures = list(itertools.chain(*evalFeatures))
-
-		#print(type(evalFeatures))
-		#print()
-		#for e in evalFeatures:
-		#	print(type(e))
-
-		#exit()
 		if args.useDebug:
 			with open(args.outputDir + "/debug/evalFeaturesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
 				print(json.dumps([t._asdict() for t in evalFeatures], indent=2), file=file)

@@ -8,12 +8,10 @@ from Tokenization import BERTTokenizer
 import multiprocessing as mp
 import os
 import itertools
-#from knockknock import telegram_sender
 
-#@telegram_sender(token="828160431:AAFaIhdaDfsOTNwV-7HQF2WEageQGuVHR7E", chat_id=15495368)
 def multiprocessFeaturize(examples, tokenizer, maxSeqLength, docStride, maxQueryLength, trainingMode, chunkSize):
 
-	cpuCount = 2 if "SLURM_JOB_CPUS_PER_NODE" not in os.environ else int(os.environ["SLURM_JOB_CPUS_PER_NODE"])
+	cpuCount = 1 if "SLURM_JOB_CPUS_PER_NODE" not in os.environ else int(os.environ["SLURM_JOB_CPUS_PER_NODE"])
 	parallelizedData = []
 
 	print("Spawning featurization on {} cores...".format(cpuCount))
@@ -21,8 +19,6 @@ def multiprocessFeaturize(examples, tokenizer, maxSeqLength, docStride, maxQuery
 	numSlices = len(examples) // chunkSize
 	if len(examples) % chunkSize:
 		numSlices +=1
-
-	#assert numSlices == len(filenames)
 
 	for i in range(numSlices):
 		if i == numSlices-1:

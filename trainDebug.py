@@ -20,6 +20,8 @@ import itertools
 from optimizer import BertAdam
 import itertools
 from knockknock import telegram_sender
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 token=""
 chat_id=None
@@ -87,7 +89,6 @@ def main():
 		convertedWeights = args.outputDir + "/ptWeights_{}_{}_{}_{}_{}.bin".format("uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
 
 	model =  QABERT4LGELUSkip.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize)
-	#model = QABERT.loadPretrained(args.modelWeights, args.useTFCheckpoint, convertedWeights, hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
 
 	with open(args.outputDir + "/modelSummary.txt", "w") as file:
 		print(model, file=file)
@@ -97,9 +98,8 @@ def main():
 	if nGPU > 1:
 		model = torch.nn.DataParallel(model)
 
-	print("Starting featurization...")
-
 	if args.doTrain:
+		print("Preparing training...")
 		with open(args.outputDir + "/trainParams.txt", "w") as file:
 			print(args, file=file)
 
@@ -125,14 +125,18 @@ def main():
 		trainFeatures = None
 		try:
 			with open(cachedTrainFeaturesFile, "rb") as reader:
-				print("Loading features file: {}...".format(cachedTrainFeaturesFile))
+				print("Trying loading train features file: {}...".format(cachedTrainFeaturesFile))
 				trainFeatures = pickle.load(reader)
+				print("Train features loaded...")
 		except:
 			print("Building train features...")
+			startTime = datetime.now()
 			trainFeatures = multiprocessFeaturize(trainExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, True, args.featuresChunkSize)
 			trainFeatures = list(itertools.chain(*trainFeatures))
 			with open(cachedTrainFeaturesFile, "wb") as writer:
 				pickle.dump(trainFeatures, writer)
+			elapsedTime = relativedelta(datetime.now(), startTime)
+			print("Train features created in {}h {}m {}s...".format(elapsedTime.hours, elapsedTime.minutes, elapsedTime.seconds))
 
 		if args.useDebug:
 			with open(args.outputDir + "/debug/trainFeaturesDebug.json", "w") as file:
@@ -145,62 +149,18 @@ def main():
 		allSegmentIDs = torch.tensor([f.segmentIDs for f in trainFeatures], dtype=torch.long)
 		allStartPos = torch.tensor([f.startPos for f in trainFeatures], dtype=torch.long)
 		allEndPos = torch.tensor([f.endPos for f in trainFeatures], dtype=torch.long)
-		#allIsImpossible = torch.tensor([f.isImpossible for f in trainFeatures], dtype=torch.float)
 
 		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos)
-#		trainData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allStartPos, allEndPos, allIsImpossible)
 
 		trainSampler = RandomSampler(trainData)
 		trainDataLoader = DataLoader(trainData, sampler=trainSampler, batch_size=args.trainBatchSize)
 
-	if args.doPredict:
-		with open(args.outputDir + "/predictParams.txt", "w") as file:
-			print(args, file=file)
-
-		print("Starting {}dev dataset creation...".format("train " if args.useTrainDev else ""))
-		evalExamples = readSQuADDataset(args.predictFile, False, squadV2=args.useVer2)
-
-		if args.useDebug:
-			with open(args.outputDir + "/debug/evalExamplesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
-				print(json.dumps([t._asdict() for t in evalExamples], indent=2), file=file)
-
-		cachedEvalFeaturesFileName = args.outputDir + "/evalFeatures{}_{}_{}_{}_{}_{}.bin".format("_trainDev" if args.useTrainDev else "", "uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
-
-		evalFeatures = None
-		try:
-			with open(cachedEvalFeaturesFileName, "rb") as reader:
-				print("Loading features file: {}...".format(cachedEvalFeaturesFileName))
-				evalFeatures = pickle.load(reader)
-		except:
-			print("Building {}dev features...".format("train " if args.useTrainDev else ""))
-			evalFeatures = multiprocessFeaturize(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False, args.featuresChunkSize)
-			evalFeatures = list(itertools.chain(*evalFeatures))
-			with open(cachedEvalFeaturesFileName, "wb") as writer:
-				pickle.dump(evalFeatures, writer)
-
-		if args.useDebug:
-			with open(args.outputDir + "/debug/evalFeaturesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
-				print(json.dumps([t._asdict() for t in evalFeatures], indent=2), file=file)
-
-		# TODO: update to list of lists structure
-		allInputIDs = torch.tensor([f.inputIDs for f in evalFeatures], dtype=torch.long)
-		allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
-		allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
-		allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
-	#		allIsImpossible = torch.tensor([f.isImpossible for f in evalFeatures], dtype=torch.long)
-		evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
-
-		evalSampler = SequentialSampler(evalData)
-		evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=args.predictBatchSize)
-
-	if args.doTrain:
 		if not args.bertTrainable:
 			noFineTuningLayers = [model.module.bert] if nGPU > 1 else [model.bert]
 
 			for l in noFineTuningLayers:
 				for v in l.parameters():
 					v.requires_grad = False
-
 
 		print("Training...")
 		model.train()
@@ -211,7 +171,6 @@ def main():
 				if nGPU >= 1:
 					batch = tuple(t.to(device) for t in batch)
 
-#				inputIDs, inputMask, segmentIDs, startPositions, endPositions, isImpossibles = batch
 				inputIDs, inputMask, segmentIDs, startPositions, endPositions = batch
 				startLogits, endLogits = model(inputIDs, segmentIDs, inputMask)
 
@@ -260,10 +219,51 @@ def main():
 
 		print("Loading finetuned model...")
 		model = QABERT4LGELUSkip.loadPretrained(outputModelFile, False, "", hiddenSize)
-		#model = QABERT.loadPretrained(outputModelFile, False, "", hiddenSize, shapes=args.linearShapes, activationFun=args.activationFun)
 
 
 	if args.doPredict:
+		print("Preparing evaluation...")
+		with open(args.outputDir + "/predictParams.txt", "w") as file:
+			print(args, file=file)
+
+		evalExamples = readSQuADDataset(args.predictFile, False, squadV2=args.useVer2)
+
+		if args.useDebug:
+			with open(args.outputDir + "/debug/evalExamplesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
+				print(json.dumps([t._asdict() for t in evalExamples], indent=2), file=file)
+
+		cachedEvalFeaturesFileName = args.outputDir + "/evalFeatures{}_{}_{}_{}_{}_{}.bin".format("_trainDev" if args.useTrainDev else "", "uncased" if args.doLowercase else "cased", hiddenSize, args.maxSeqLength, args.paragraphStride, args.maxQueryLength)
+
+		evalFeatures = None
+		try:
+			with open(cachedEvalFeaturesFileName, "rb") as reader:
+				print("Trying loading eval features file: {}...".format(cachedEvalFeaturesFileName))
+				evalFeatures = pickle.load(reader)
+				print("Eval features loaded...")
+		except:
+			print("Building {}dev features...".format("train " if args.useTrainDev else ""))
+			startTime = datetime.now()
+			evalFeatures = multiprocessFeaturize(evalExamples, tokenizer, args.maxSeqLength, args.paragraphStride, args.maxQueryLength, False, args.featuresChunkSize)
+			evalFeatures = list(itertools.chain(*evalFeatures))
+			with open(cachedEvalFeaturesFileName, "wb") as writer:
+				pickle.dump(evalFeatures, writer)
+			elapsedTime = relativedelta(datetime.now(), startTime)
+			print("Eval features created in {}h {}m {}s...".format(elapsedTime.hours, elapsedTime.minutes, elapsedTime.seconds))
+
+		if args.useDebug:
+			with open(args.outputDir + "/debug/evalFeaturesDebug{}.json".format("_trainDev" if args.useTrainDev else ""), "w") as file:
+				print(json.dumps([t._asdict() for t in evalFeatures], indent=2), file=file)
+
+		print("Starting {}dev dataset creation...".format("train " if args.useTrainDev else ""))
+		allInputIDs = torch.tensor([f.inputIDs for f in evalFeatures], dtype=torch.long)
+		allInputMask = torch.tensor([f.inputMask for f in evalFeatures], dtype=torch.long)
+		allSegmentIDs = torch.tensor([f.segmentIDs for f in evalFeatures], dtype=torch.long)
+		allExampleIndex = torch.arange(allInputIDs.size(0), dtype=torch.long)
+		evalData = TensorDataset(allInputIDs, allInputMask, allSegmentIDs, allExampleIndex)
+
+		evalSampler = SequentialSampler(evalData)
+		evalDataLoader = DataLoader(evalData, sampler=evalSampler, batch_size=args.predictBatchSize)
+
 		print("Predicting...")
 		model.to(device)
 		model.eval()

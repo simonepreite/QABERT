@@ -60,6 +60,8 @@ def answerElements(questionAnswer, wordList, wordOffset, squadV2):
 
 def readSQuADDataset(inputFile, trainingMode, squadV2=True):
 
+	print("Loading dataset examples...")
+
 	with open(inputFile, "r", encoding='utf-8') as SQuAD:
 		squadData = json.load(SQuAD)["data"]
 

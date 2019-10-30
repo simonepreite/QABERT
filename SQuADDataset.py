@@ -144,8 +144,6 @@ def parallelFeaturization(examples, tokenizer, maxSeqLength, docStride, maxQuery
 	#assert len(filenames) == (len(examples) // chunkSize + 1) if len(examples) % chunkSize else len(examples) // chunkSize
 	features = []
 
-	print("parallel featurization with startIndex: {}".format(startIndex))
-
 	indexes = []
 	for (index, example) in enumerate(examples, start=startIndex):
 		indexes.append(index)
